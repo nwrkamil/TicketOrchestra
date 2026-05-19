@@ -86,6 +86,7 @@ TicketOrchestra is a high-performance, distributed ticket reservation system des
 - Java 25
 - Docker (for Testcontainers/LocalStack)
 - AWS CLI (for local configuration)
+- Ensure the `gradlew` script is executable (on Linux/macOS: `chmod +x gradlew`)
 
 ### Running Locally
 ```bash
