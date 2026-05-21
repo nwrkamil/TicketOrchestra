@@ -4,7 +4,7 @@
 TicketOrchestra is a high-performance, distributed ticket reservation system designed to handle massive traffic spikes during concert ticket drops. The project demonstrates advanced Java engineering practices, focusing on high concurrency, eventual consistency, and robust error handling in a cloud-native environment.
 
 ### Core Value Proposition
-- **High Concurrency**: Leveraging Java 25 Virtual Threads to handle thousands of simultaneous reservations.
+- **High Concurrency**: Leveraging Java 21 Virtual Threads to handle thousands of simultaneous reservations.
 - **Reliability**: Implementing the Saga Pattern (Choreography) to manage distributed transactions across AWS services.
 - **Data Integrity**: Using DynamoDB with Optimistic Locking and Transactional Outbox patterns.
 - **Observability**: Full traceability with AWS X-Ray and CloudWatch.
@@ -36,7 +36,7 @@ TicketOrchestra is a high-performance, distributed ticket reservation system des
 ---
 
 ## 3. Technical Stack
-- **Runtime**: Java 25 (Amazon Corretto)
+- **Runtime**: Java 21 (Amazon Corretto)
 - **Framework**: Spring Boot 4.0.x
 - **Build System**: Gradle (Kotlin DSL)
 - **Cloud Infrastructure**:
@@ -83,7 +83,7 @@ TicketOrchestra is a high-performance, distributed ticket reservation system des
 
 ## 6. Development Guide
 ### Prerequisites
-- Java 25
+- Java 21
 - Docker (for Testcontainers/LocalStack)
 - AWS CLI (for local configuration)
 - Ensure the `gradlew` script is executable (on Linux/macOS: `chmod +x gradlew`)
