@@ -19,7 +19,7 @@ import java.net.URI;
 @Profile("local")
 public class LocalAwsConfig {
 
-   // @Value("${spring.cloud.aws.endpoint:http://localhost:4566}")
+    @Value("${spring.cloud.aws.endpoint:http://localhost:4566}")
     private String awsEndpoint;
 
     @Bean
