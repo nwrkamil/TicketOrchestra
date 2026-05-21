@@ -200,10 +200,12 @@ public class ReservationE2ETest extends BaseIntegrationTest {
     }
 
     private void saveLockedSeat(UUID eventId, UUID seatId, UUID lockOwner) {
-        Seat seat = new Seat();
-        seat.setEventId(eventId);
-        seat.setSeatId(seatId);
-        seat.setPrice(100.0);
+        Seat seat = inventoryRepository.findSeat(eventId, seatId).orElseGet(Seat::new);
+        if (seat.getEventId() == null) {
+            seat.setEventId(eventId);
+            seat.setSeatId(seatId);
+            seat.setPrice(100.0);
+        }
         seat.setStatus(Seat.SeatStatus.LOCKED);
         seat.setLockOwner(lockOwner);
         inventoryRepository.saveSeat(seat);
