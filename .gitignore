@@ -5,3 +5,5 @@ build/
 .DS_Store
 gradle-home/
 !gradle/wrapper/gradle-wrapper.jar
+zadania/
+.localstack
