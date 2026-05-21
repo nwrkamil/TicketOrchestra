@@ -1,20 +1,32 @@
 package com.ticketorchestra.reservation;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ticketorchestra.BaseIntegrationTest;
+import com.ticketorchestra.common.messaging.IntegrationEvent;
 import com.ticketorchestra.inventory.domain.Event;
 import com.ticketorchestra.inventory.domain.InventoryRepository;
 import com.ticketorchestra.inventory.domain.Seat;
+import com.ticketorchestra.reservation.domain.Reservation;
+import com.ticketorchestra.reservation.domain.ReservationRepository;
+import com.ticketorchestra.reservation.infrastructure.ReservationSagaListener;
 import io.restassured.http.ContentType;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import software.amazon.awssdk.services.sqs.SqsClient;
+import software.amazon.awssdk.services.sqs.model.GetQueueUrlRequest;
+import software.amazon.awssdk.services.sqs.model.MessageAttributeValue;
+import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static io.restassured.RestAssured.given;
@@ -26,6 +38,18 @@ public class ReservationE2ETest extends BaseIntegrationTest {
 
     @Autowired
     private InventoryRepository inventoryRepository;
+
+    @Autowired
+    private ReservationRepository reservationRepository;
+
+    @Autowired
+    private ReservationSagaListener reservationSagaListener;
+
+    @Autowired
+    private SqsClient sqsClient;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     private String baseUrl;
 
@@ -113,6 +137,48 @@ public class ReservationE2ETest extends BaseIntegrationTest {
                 inventoryRepository.findSeat(eventId, seatId).orElseThrow().getStatus());
     }
 
+    @Test
+    void shouldHandleDuplicatePaymentCompletedEventIdempotently() throws Exception {
+        UUID eventId = UUID.randomUUID();
+        UUID seatId = UUID.randomUUID();
+        UUID reservationId = UUID.randomUUID();
+        createEvent(eventId);
+        saveLockedSeat(eventId, seatId, reservationId);
+        saveReservation(reservationId, eventId, seatId, Reservation.ReservationStatus.PENDING);
+
+        sendPaymentEventTwice("PAYMENT_COMPLETED", reservationId);
+        reservationSagaListener.listen();
+
+        Reservation reservation = reservationRepository.findById(reservationId).orElseThrow();
+        Seat seat = inventoryRepository.findSeat(eventId, seatId).orElseThrow();
+        assertEquals(Reservation.ReservationStatus.PAID, reservation.getStatus());
+        assertEquals(Seat.SeatStatus.SOLD, seat.getStatus());
+    }
+
+    @Test
+    void shouldHandleDuplicatePaymentFailedWithoutUnlockingSeatOwnedByNextReservation() throws Exception {
+        UUID eventId = UUID.randomUUID();
+        UUID seatId = UUID.randomUUID();
+        UUID firstReservationId = UUID.randomUUID();
+        UUID secondReservationId = UUID.randomUUID();
+        createEvent(eventId);
+        saveLockedSeat(eventId, seatId, firstReservationId);
+        saveReservation(firstReservationId, eventId, seatId, Reservation.ReservationStatus.PENDING);
+
+        sendPaymentEvent("PAYMENT_FAILED", firstReservationId);
+        reservationSagaListener.listen();
+
+        saveLockedSeat(eventId, seatId, secondReservationId);
+        saveReservation(secondReservationId, eventId, seatId, Reservation.ReservationStatus.PENDING);
+
+        sendPaymentEvent("PAYMENT_FAILED", firstReservationId);
+        reservationSagaListener.listen();
+
+        Seat seat = inventoryRepository.findSeat(eventId, seatId).orElseThrow();
+        assertEquals(Seat.SeatStatus.LOCKED, seat.getStatus());
+        assertEquals(secondReservationId, seat.getLockOwner());
+    }
+
     private void createEvent(UUID eventId) {
         Event event = new Event();
         event.setEventId(eventId);
@@ -131,5 +197,56 @@ public class ReservationE2ETest extends BaseIntegrationTest {
         seat.setPrice(100.0);
         seat.setStatus(status);
         inventoryRepository.saveSeat(seat);
+    }
+
+    private void saveLockedSeat(UUID eventId, UUID seatId, UUID lockOwner) {
+        Seat seat = new Seat();
+        seat.setEventId(eventId);
+        seat.setSeatId(seatId);
+        seat.setPrice(100.0);
+        seat.setStatus(Seat.SeatStatus.LOCKED);
+        seat.setLockOwner(lockOwner);
+        inventoryRepository.saveSeat(seat);
+    }
+
+    private void saveReservation(UUID reservationId,
+                                 UUID eventId,
+                                 UUID seatId,
+                                 Reservation.ReservationStatus status) {
+        Reservation reservation = new Reservation();
+        reservation.setReservationId(reservationId);
+        reservation.setUserId("test-user");
+        reservation.setEventId(eventId);
+        reservation.setSeatIds(List.of(seatId));
+        reservation.setTotalPrice(100.0);
+        reservation.setStatus(status);
+        reservation.setExpiresAt(Instant.now().plusSeconds(900));
+        reservationRepository.save(reservation);
+    }
+
+    private void sendPaymentEventTwice(String eventType, UUID reservationId) throws JsonProcessingException {
+        sendPaymentEvent(eventType, reservationId);
+        sendPaymentEvent(eventType, reservationId);
+    }
+
+    private void sendPaymentEvent(String eventType, UUID reservationId) throws JsonProcessingException {
+        UUID eventId = UUID.randomUUID();
+        String queueUrl = sqsClient.getQueueUrl(GetQueueUrlRequest.builder()
+                .queueName("payment-events")
+                .build()).queueUrl();
+
+        sqsClient.sendMessage(SendMessageRequest.builder()
+                .queueUrl(queueUrl)
+                .messageBody(objectMapper.writeValueAsString(IntegrationEvent.forReservation(eventId, reservationId)))
+                .messageAttributes(Map.of(
+                        "Type", MessageAttributeValue.builder()
+                                .dataType("String")
+                                .stringValue(eventType)
+                                .build(),
+                        "IdempotencyKey", MessageAttributeValue.builder()
+                                .dataType("String")
+                                .stringValue(eventId.toString())
+                                .build()))
+                .build());
     }
 }

@@ -15,8 +15,13 @@ public class PaymentService {
 
     public boolean processPayment(UUID reservationId, double amount) {
         log.info("Processing payment for reservation: {} amount: {}", reservationId, amount);
-        
-        Payment payment = new Payment(UUID.randomUUID(), reservationId, amount, Payment.PaymentStatus.SUCCESS);
+
+        Payment existingPayment = repository.findById(reservationId).orElse(null);
+        if (existingPayment != null) {
+            return existingPayment.getStatus() == Payment.PaymentStatus.SUCCESS;
+        }
+
+        Payment payment = new Payment(reservationId, reservationId, amount, Payment.PaymentStatus.SUCCESS);
         repository.save(payment);
         
         return true;

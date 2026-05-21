@@ -1,5 +1,7 @@
 package com.ticketorchestra.payment.infrastructure;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ticketorchestra.common.messaging.IntegrationEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import com.ticketorchestra.payment.domain.PaymentService;
@@ -22,6 +24,8 @@ public class PaymentListener {
     @Lazy
     private final SqsClient sqsClient;
     private final PaymentService paymentService;
+    @SuppressFBWarnings("EI2")
+    private final ObjectMapper objectMapper;
     private String reservationEventsQueueUrl;
     private String paymentEventsQueueUrl;
 
@@ -45,28 +49,43 @@ public class PaymentListener {
 
         for (Message message : messages) {
             log.info("Received message: {}", message.body());
-            
-            String reservationIdStr = message.body().split(":")[1].replace("\"", "").replace("}", "").trim();
-            UUID reservationId = UUID.fromString(reservationIdStr);
-            
-            boolean success = paymentService.processPayment(reservationId, 100.0);
-            
-            String eventType = success ? "PAYMENT_COMPLETED" : "PAYMENT_FAILED";
-            sqsClient.sendMessage(SendMessageRequest.builder()
-                    .queueUrl(payQueueUrl)
-                    .messageBody(String.format("{\"reservationId\":\"%s\"}", reservationId))
-                    .messageAttributes(java.util.Map.of("Type", MessageAttributeValue.builder()
-                            .dataType("String")
-                            .stringValue(eventType)
-                            .build()))
-                    .build());
 
-            sqsClient.deleteMessage(DeleteMessageRequest.builder()
-                    .queueUrl(resQueueUrl)
-                    .receiptHandle(message.receiptHandle())
-                    .build());
-            
-            log.info("Payment event emitted: {} for reservation: {}", eventType, reservationId);
+            try {
+                IntegrationEvent incomingEvent = objectMapper.readValue(message.body(), IntegrationEvent.class);
+                UUID reservationId = incomingEvent.reservationId();
+
+                boolean success = paymentService.processPayment(reservationId, 100.0);
+
+                String eventType = success ? "PAYMENT_COMPLETED" : "PAYMENT_FAILED";
+                UUID paymentEventId = UUID.randomUUID();
+                sqsClient.sendMessage(SendMessageRequest.builder()
+                        .queueUrl(payQueueUrl)
+                        .messageBody(objectMapper.writeValueAsString(
+                                IntegrationEvent.forReservation(paymentEventId, reservationId)))
+                        .messageAttributes(java.util.Map.of(
+                                "Type", MessageAttributeValue.builder()
+                                        .dataType("String")
+                                        .stringValue(eventType)
+                                        .build(),
+                                "IdempotencyKey", MessageAttributeValue.builder()
+                                        .dataType("String")
+                                        .stringValue(paymentEventId.toString())
+                                        .build()))
+                        .build());
+
+                sqsClient.deleteMessage(DeleteMessageRequest.builder()
+                        .queueUrl(resQueueUrl)
+                        .receiptHandle(message.receiptHandle())
+                        .build());
+
+                log.info("Payment event emitted: {} for reservation: {}", eventType, reservationId);
+            } catch (RuntimeException e) {
+                log.error("Payment domain processing failed for message {}. Message will remain in SQS.",
+                        message.messageId(), e);
+            } catch (Exception e) {
+                log.error("Failed to parse or process reservation event message {}. Message will remain in SQS.",
+                        message.messageId(), e);
+            }
         }
     }
 

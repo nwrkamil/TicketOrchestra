@@ -45,7 +45,7 @@ public class DynamoDbReservationCreationStore implements ReservationCreationStor
 
         for (UUID seatId : reservation.getSeatIds()) {
             items.add(TransactWriteItem.builder()
-                    .update(lockSeatUpdate(reservation.getEventId(), seatId))
+                    .update(lockSeatUpdate(reservation.getEventId(), seatId, reservation.getReservationId()))
                     .build());
         }
 
@@ -74,18 +74,19 @@ public class DynamoDbReservationCreationStore implements ReservationCreationStor
         }
     }
 
-    private Update lockSeatUpdate(UUID eventId, UUID seatId) {
+    private Update lockSeatUpdate(UUID eventId, UUID seatId, UUID lockOwner) {
         return Update.builder()
                 .tableName(SEATS_TABLE)
                 .key(Map.of(
                         "eventId", stringValue(eventId),
                         "seatId", stringValue(seatId)))
-                .updateExpression("SET #status = :locked")
+                .updateExpression("SET #status = :locked, lockOwner = :lockOwner")
                 .conditionExpression("#status = :available")
                 .expressionAttributeNames(Map.of("#status", "status"))
                 .expressionAttributeValues(Map.of(
                         ":available", stringValue("AVAILABLE"),
-                        ":locked", stringValue("LOCKED")))
+                        ":locked", stringValue("LOCKED"),
+                        ":lockOwner", stringValue(lockOwner)))
                 .build();
     }
 

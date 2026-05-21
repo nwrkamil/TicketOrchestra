@@ -1,5 +1,7 @@
 package com.ticketorchestra.reservation.infrastructure;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ticketorchestra.common.messaging.IntegrationEvent;
 import lombok.extern.slf4j.Slf4j;
 import com.ticketorchestra.reservation.domain.ReservationService;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -13,7 +15,6 @@ import software.amazon.awssdk.services.sqs.model.Message;
 import software.amazon.awssdk.services.sqs.model.ReceiveMessageRequest;
 
 import java.util.List;
-import java.util.UUID;
 
 @Slf4j
 @Component
@@ -21,12 +22,16 @@ public class ReservationSagaListener {
 
     private final SqsClient sqsClient;
     private final ReservationService reservationService;
+    private final ObjectMapper objectMapper;
     private String queueUrl;
 
     @SuppressFBWarnings("EI2")
-    public ReservationSagaListener(@Lazy SqsClient sqsClient, ReservationService reservationService) {
+    public ReservationSagaListener(@Lazy SqsClient sqsClient,
+                                   ReservationService reservationService,
+                                   ObjectMapper objectMapper) {
         this.sqsClient = sqsClient;
         this.reservationService = reservationService;
+        this.objectMapper = objectMapper;
     }
 
     @Scheduled(fixedDelay = 2000)
@@ -53,19 +58,28 @@ public class ReservationSagaListener {
                 continue;
             }
             String type = attributes.get("Type").stringValue();
-            String reservationIdStr = message.body().split(":")[1].replace("\"", "").replace("}", "").trim();
-            UUID reservationId = UUID.fromString(reservationIdStr);
+            try {
+                IntegrationEvent event = objectMapper.readValue(message.body(), IntegrationEvent.class);
+                if ("PAYMENT_COMPLETED".equals(type)) {
+                    reservationService.confirmReservation(event.reservationId());
+                } else if ("PAYMENT_FAILED".equals(type)) {
+                    reservationService.cancelReservation(event.reservationId());
+                } else {
+                    log.warn("Received unsupported payment event type: {}", type);
+                    continue;
+                }
 
-            if ("PAYMENT_COMPLETED".equals(type)) {
-                reservationService.confirmReservation(reservationId);
-            } else if ("PAYMENT_FAILED".equals(type)) {
-                reservationService.cancelReservation(reservationId);
+                sqsClient.deleteMessage(DeleteMessageRequest.builder()
+                        .queueUrl(qUrl)
+                        .receiptHandle(message.receiptHandle())
+                        .build());
+            } catch (RuntimeException e) {
+                log.error("Domain processing failed for message {}. Message will remain in SQS.",
+                        message.messageId(), e);
+            } catch (Exception e) {
+                log.error("Failed to parse or process message {}. Message will remain in SQS.",
+                        message.messageId(), e);
             }
-
-            sqsClient.deleteMessage(DeleteMessageRequest.builder()
-                    .queueUrl(qUrl)
-                    .receiptHandle(message.receiptHandle())
-                    .build());
         }
     }
 

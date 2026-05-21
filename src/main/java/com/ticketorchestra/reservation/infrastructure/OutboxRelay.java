@@ -46,16 +46,21 @@ public class OutboxRelay {
 
         List<OutboxEvent> unprocessedEvents = getOutboxTable().scan().items().stream()
                 .filter(e -> !e.isProcessed())
-                .collect(Collectors.toList());
+                .toList();
 
         for (OutboxEvent event : unprocessedEvents) {
             sqsClient.sendMessage(SendMessageRequest.builder()
                     .queueUrl(qUrl)
                     .messageBody(event.getPayload())
-                    .messageAttributes(java.util.Map.of("Type", MessageAttributeValue.builder()
-                            .dataType("String")
-                            .stringValue(event.getType())
-                            .build()))
+                    .messageAttributes(java.util.Map.of(
+                            "Type", MessageAttributeValue.builder()
+                                    .dataType("String")
+                                    .stringValue(event.getType())
+                                    .build(),
+                            "IdempotencyKey", MessageAttributeValue.builder()
+                                    .dataType("String")
+                                    .stringValue(event.getEventId().toString())
+                                    .build()))
                     .build());
             
             event.setProcessed(true);
