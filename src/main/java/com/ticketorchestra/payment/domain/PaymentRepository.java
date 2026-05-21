@@ -5,5 +5,6 @@ import java.util.UUID;
 
 public interface PaymentRepository {
     void save(Payment payment);
+    Optional<Payment> findById(UUID paymentId);
     Optional<Payment> findByReservationId(UUID reservationId);
 }

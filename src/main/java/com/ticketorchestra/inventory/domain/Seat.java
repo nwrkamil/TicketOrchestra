@@ -19,6 +19,7 @@ public class Seat {
     private UUID seatId;
     private double price;
     private SeatStatus status;
+    private UUID lockOwner;
     private Long version;
 
     @DynamoDbPartitionKey

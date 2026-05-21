@@ -1,0 +1,4 @@
+spring:
+  cloud:
+    aws:
+      endpoint: http://localhost:4566

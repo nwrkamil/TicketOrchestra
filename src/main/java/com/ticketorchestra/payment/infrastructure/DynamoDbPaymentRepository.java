@@ -25,6 +25,11 @@ public class DynamoDbPaymentRepository implements PaymentRepository {
     }
 
     @Override
+    public Optional<Payment> findById(UUID paymentId) {
+        return Optional.ofNullable(table.getItem(r -> r.key(k -> k.partitionValue(paymentId.toString()))));
+    }
+
+    @Override
     public Optional<Payment> findByReservationId(UUID reservationId) {
         // Simple scan for demo purposes, in production use GSI
         return table.scan().items().stream()
