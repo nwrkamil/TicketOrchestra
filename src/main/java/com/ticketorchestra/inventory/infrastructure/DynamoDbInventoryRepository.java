@@ -6,6 +6,7 @@ import com.ticketorchestra.common.id.SeatId;
 import com.ticketorchestra.inventory.domain.Event;
 import com.ticketorchestra.inventory.domain.InventoryRepository;
 import com.ticketorchestra.inventory.domain.Seat;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.springframework.stereotype.Repository;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbTable;
@@ -28,6 +29,7 @@ public class DynamoDbInventoryRepository implements InventoryRepository {
     private final DynamoDbTable<Event> eventTable;
     private final DynamoDbClient dynamoDbClient;
 
+    @SuppressFBWarnings("EI2")
     public DynamoDbInventoryRepository(DynamoDbEnhancedClient enhancedClient, DynamoDbClient dynamoDbClient) {
         this.seatTable = enhancedClient.table(SEATS_TABLE, TableSchema.fromBean(Seat.class));
         this.eventTable = enhancedClient.table("Events", TableSchema.fromBean(Event.class));
