@@ -22,13 +22,7 @@ public class InventoryService {
         if (seat.getStatus() == Seat.SeatStatus.AVAILABLE || seat.getStatus() == Seat.SeatStatus.SOLD) {
             return;
         }
-        if (!Objects.equals(seat.getLockOwner(), lockOwner.id())) {
-            return;
-        }
-
-        seat.setStatus(Seat.SeatStatus.AVAILABLE);
-        seat.setLockOwner(null);
-        repository.saveSeat(seat);
+        repository.unlockSeatIfOwned(eventId, seatId, lockOwner);
     }
 
     public void sellSeat(EventId eventId, SeatId seatId, ReservationId lockOwner) {

@@ -10,7 +10,6 @@ import com.ticketorchestra.inventory.domain.InventoryRepository;
 import com.ticketorchestra.inventory.domain.Seat;
 import com.ticketorchestra.reservation.domain.Reservation;
 import com.ticketorchestra.reservation.domain.ReservationRepository;
-import com.ticketorchestra.reservation.infrastructure.ReservationSagaListener;
 import io.awspring.cloud.sqs.operations.SqsTemplate;
 import io.restassured.http.ContentType;
 import lombok.extern.slf4j.Slf4j;
@@ -45,9 +44,6 @@ public class ReservationE2ETest extends BaseIntegrationTest {
     private ReservationRepository reservationRepository;
 
     @Autowired
-    private ReservationSagaListener reservationSagaListener;
-
-    @Autowired
     private SqsTemplate sqsTemplate;
 
     @Autowired
@@ -61,7 +57,7 @@ public class ReservationE2ETest extends BaseIntegrationTest {
     }
 
     @Test
-    void shouldCompleteReservationSaga() throws Exception {
+    void shouldCompleteReservationSaga() {
         UUID eventId = UUID.randomUUID();
         UUID seatId = UUID.randomUUID();
         HttpClient httpClient = HttpClient.newHttpClient();
@@ -140,7 +136,7 @@ public class ReservationE2ETest extends BaseIntegrationTest {
     }
 
     @Test
-    void shouldHandleDuplicatePaymentCompletedEventIdempotently() throws Exception {
+    void shouldHandleDuplicatePaymentCompletedEventIdempotently() {
         UUID eventId = UUID.randomUUID();
         UUID seatId = UUID.randomUUID();
         UUID reservationId = UUID.randomUUID();
@@ -159,7 +155,7 @@ public class ReservationE2ETest extends BaseIntegrationTest {
     }
 
     @Test
-    void shouldHandleDuplicatePaymentFailedWithoutUnlockingSeatOwnedByNextReservation() throws Exception {
+    void shouldHandleDuplicatePaymentFailedWithoutUnlockingSeatOwnedByNextReservation() {
         UUID eventId = UUID.randomUUID();
         UUID seatId = UUID.randomUUID();
         UUID firstReservationId = UUID.randomUUID();
