@@ -75,8 +75,55 @@ public class DynamoDbInitializer {
         createTable("Reservations", "reservationId", null);
         createTable("Events", "eventId", null);
         createTable("Seats", "eventId", "seatId");
-        createTable("Outbox", "eventId", null);
+        
+        // Outbox with GSI - ensure fresh state for local development
+        try {
+            DescribeTableResponse describe = dynamoDbClient.describeTable(DescribeTableRequest.builder().tableName("Outbox").build());
+            boolean hasIndex = describe.table().hasGlobalSecondaryIndexes() && 
+                               describe.table().globalSecondaryIndexes().stream()
+                                       .anyMatch(i -> i.indexName().equals("StatusIndex"));
+            
+            if (!hasIndex) {
+                log.info("Table 'Outbox' exists but missing 'StatusIndex'. Deleting and recreating...");
+                dynamoDbClient.deleteTable(DeleteTableRequest.builder().tableName("Outbox").build());
+                // Wait a bit for deletion to propagate in LocalStack
+                Thread.sleep(1000);
+                throw ResourceNotFoundException.builder().message("Forcing recreation").build();
+            }
+        } catch (ResourceNotFoundException | InterruptedException e) {
+            createOutboxTable();
+        } catch (Exception e) {
+            log.warn("Error checking Outbox table: {}. Attempting creation.", e.getMessage());
+            createOutboxTable();
+        }
+
         createTable("Payments", "paymentId", null);
+    }
+
+    private void createOutboxTable() {
+        try {
+            dynamoDbClient.createTable(CreateTableRequest.builder()
+                .tableName("Outbox")
+                .attributeDefinitions(
+                    AttributeDefinition.builder().attributeName("eventId").attributeType(ScalarAttributeType.S).build(),
+                    AttributeDefinition.builder().attributeName("status").attributeType(ScalarAttributeType.S).build(),
+                    AttributeDefinition.builder().attributeName("createdAt").attributeType(ScalarAttributeType.S).build()
+                )
+                .keySchema(KeySchemaElement.builder().attributeName("eventId").keyType(KeyType.HASH).build())
+                .billingMode(BillingMode.PAY_PER_REQUEST)
+                .globalSecondaryIndexes(GlobalSecondaryIndex.builder()
+                        .indexName("StatusIndex")
+                        .keySchema(
+                                KeySchemaElement.builder().attributeName("status").keyType(KeyType.HASH).build(),
+                                KeySchemaElement.builder().attributeName("createdAt").keyType(KeyType.RANGE).build()
+                        )
+                        .projection(Projection.builder().projectionType(ProjectionType.ALL).build())
+                        .build())
+                .build());
+            log.info("Table 'Outbox' created successfully with StatusIndex.");
+        } catch (ResourceInUseException e) {
+            log.info("Table 'Outbox' already exists.");
+        }
     }
 
     private void createQueues() {

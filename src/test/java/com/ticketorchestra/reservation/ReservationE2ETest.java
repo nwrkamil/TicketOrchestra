@@ -32,8 +32,10 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import static io.restassured.RestAssured.given;
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -87,20 +89,20 @@ public class ReservationE2ETest extends BaseIntegrationTest {
                 .extract().path("reservationId");
 
         // 3. Wait for Saga to process
-        Thread.sleep(8000);
-
-        // 4. Verify Payment status
-        HttpResponse<String> paymentResponse = httpClient.send(
-                HttpRequest.newBuilder(URI.create(baseUrl + "/v1/payments/reservation/" + reservationId)).GET().build(),
-                HttpResponse.BodyHandlers.ofString());
-        assertEquals(200, paymentResponse.statusCode(), paymentResponse.body());
-
-        // 5. Verify Seat status
-        HttpResponse<String> seatResponse = httpClient.send(
-                HttpRequest.newBuilder(URI.create(baseUrl + "/v1/inventory/events/" + eventId + "/seats/" + seatId)).GET().build(),
-                HttpResponse.BodyHandlers.ofString());
-        assertEquals(200, seatResponse.statusCode(), seatResponse.body());
-        assertTrue(seatResponse.body().contains("\"status\":\"SOLD\""), seatResponse.body());
+        await().atMost(15, TimeUnit.SECONDS).untilAsserted(() -> {
+            // 4. Verify Payment status
+            HttpResponse<String> paymentResponse = httpClient.send(
+                    HttpRequest.newBuilder(URI.create(baseUrl + "/v1/payments/reservation/" + reservationId)).GET().build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, paymentResponse.statusCode(), paymentResponse.body());
+            
+            // 5. Verify Seat status
+            HttpResponse<String> seatResponse = httpClient.send(
+                    HttpRequest.newBuilder(URI.create(baseUrl + "/v1/inventory/events/" + eventId + "/seats/" + seatId)).GET().build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, seatResponse.statusCode(), seatResponse.body());
+            assertTrue(seatResponse.body().contains("\"status\":\"SOLD\""), seatResponse.body());
+        });
     }
 
     @Test

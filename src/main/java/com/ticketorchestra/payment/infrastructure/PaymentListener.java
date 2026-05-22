@@ -16,7 +16,6 @@ import software.amazon.awssdk.services.sqs.model.*;
 
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 @Slf4j
 @Component
