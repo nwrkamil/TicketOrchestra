@@ -17,6 +17,10 @@ import java.util.UUID;
 @DynamoDbBean
 public class Reservation {
     private UUID reservationId;
+    /**
+     * In a production system, userId would be extracted from a JWT token.
+     * It is included here as a field for demonstration purposes.
+     */
     private String userId;
     private UUID eventId;
     private List<UUID> seatIds;

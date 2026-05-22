@@ -2,8 +2,14 @@ package com.ticketorchestra.reservation.api;
 
 import com.ticketorchestra.reservation.domain.Reservation;
 import com.ticketorchestra.reservation.domain.ReservationService;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * The core module of the application, focusing on reservation orchestration, 
+ * transaction consistency, and the Saga pattern implementation.
+ */
+@Tag(name = "Reservation", description = "Core module of the application. Focuses on reservation orchestration, distributed transactions, and Saga pattern.")
 @RestController
 @RequestMapping("/v1/reservations")
 public class ReservationController {

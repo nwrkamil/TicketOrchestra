@@ -4,6 +4,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ticketorchestra.common.id.EventId;
+import com.ticketorchestra.common.id.IntegrationEventId;
+import com.ticketorchestra.common.id.ReservationId;
+import com.ticketorchestra.common.id.SeatId;
 import com.ticketorchestra.common.messaging.IntegrationEvent;
 import com.ticketorchestra.inventory.InventoryService;
 import org.springframework.beans.factory.annotation.Value;
@@ -37,17 +41,20 @@ public class ReservationService {
     private int maxSeatsPerReservation;
 
     public Reservation createReservation(Reservation reservation) {
-        validateSeatLimit(reservation.getSeatIds());
+        List<SeatId> seatIds = seatIdsFrom(reservation);
+        validateSeatLimit(seatIds);
 
         reservation.setReservationId(UUID.randomUUID());
         reservation.setStatus(Reservation.ReservationStatus.PENDING);
         reservation.setExpiresAt(Instant.now().plus(15, ChronoUnit.MINUTES));
+        EventId eventId = new EventId(reservation.getEventId());
+        ReservationId reservationId = new ReservationId(reservation.getReservationId());
 
         var antiFraudCheck = CompletableFuture.supplyAsync(
                 () -> antiFraudService.check(reservation.getUserId()), executor);
         
         var pricing = CompletableFuture.supplyAsync(
-                () -> pricingService.calculateTotal(reservation.getEventId(), reservation.getSeatIds()), executor);
+                () -> pricingService.calculateTotal(eventId, seatIds), executor);
 
         CompletableFuture.allOf(antiFraudCheck, pricing).join();
 
@@ -57,19 +64,28 @@ public class ReservationService {
 
         reservation.setTotalPrice(pricing.join());
 
-        UUID outboxEventId = UUID.randomUUID();
+        IntegrationEventId outboxEventId = IntegrationEventId.random();
         OutboxEvent outboxEvent = new OutboxEvent(
                 outboxEventId,
                 reservation.getReservationId().toString(),
                 "RESERVATION_CREATED",
-                toPayload(IntegrationEvent.forReservation(outboxEventId, reservation.getReservationId()))
+                toPayload(IntegrationEvent.forReservation(outboxEventId, reservationId))
         );
 
         reservationCreationStore.createWithSeatLocks(reservation, outboxEvent);
         return reservation;
     }
 
-    private void validateSeatLimit(List<UUID> seatIds) {
+    private List<SeatId> seatIdsFrom(Reservation reservation) {
+        if (reservation.getSeatIds() == null) {
+            return List.of();
+        }
+        return reservation.getSeatIds().stream()
+                .map(SeatId::new)
+                .toList();
+    }
+
+    private void validateSeatLimit(List<SeatId> seatIds) {
         if (seatIds == null || seatIds.isEmpty()) {
             throw new RuntimeException("At least one seat is required");
         }
@@ -89,7 +105,7 @@ public class ReservationService {
         }
     }
 
-    public void confirmReservation(UUID reservationId) {
+    public void confirmReservation(ReservationId reservationId) {
         Reservation reservation = repository.findById(reservationId)
                 .orElseThrow(() -> new RuntimeException("Reservation not found"));
 
@@ -104,12 +120,13 @@ public class ReservationService {
 
         reservation.setStatus(Reservation.ReservationStatus.PAID);
         repository.save(reservation);
+        EventId eventId = new EventId(reservation.getEventId());
         reservation.getSeatIds().forEach(seatId ->
-                inventoryService.sellSeat(reservation.getEventId(), seatId, reservationId));
+                inventoryService.sellSeat(eventId, new SeatId(seatId), reservationId));
         log.info("Reservation confirmed: {}", reservationId);
     }
 
-    public void cancelReservation(UUID reservationId) {
+    public void cancelReservation(ReservationId reservationId) {
         Reservation reservation = repository.findById(reservationId)
                 .orElseThrow(() -> new RuntimeException("Reservation not found"));
 
@@ -126,8 +143,9 @@ public class ReservationService {
         repository.save(reservation);
         
         // Compensating action: unlock seats
+        EventId eventId = new EventId(reservation.getEventId());
         reservation.getSeatIds().forEach(seatId -> 
-                inventoryService.unlockSeat(reservation.getEventId(), seatId, reservationId));
+                inventoryService.unlockSeat(eventId, new SeatId(seatId), reservationId));
         
         log.info("Reservation cancelled and seats unlocked: {}", reservationId);
     }

@@ -1,5 +1,7 @@
 package com.ticketorchestra.payment.domain;
 
+import com.ticketorchestra.common.id.PaymentId;
+import com.ticketorchestra.common.id.ReservationId;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -20,9 +22,9 @@ public class Payment {
     private PaymentStatus status;
     private Instant createdAt;
 
-    public Payment(UUID paymentId, UUID reservationId, double amount, PaymentStatus status) {
-        this.paymentId = paymentId;
-        this.reservationId = reservationId;
+    public Payment(PaymentId paymentId, ReservationId reservationId, double amount, PaymentStatus status) {
+        this.paymentId = paymentId.id();
+        this.reservationId = reservationId.id();
         this.amount = amount;
         this.status = status;
         this.createdAt = Instant.now();

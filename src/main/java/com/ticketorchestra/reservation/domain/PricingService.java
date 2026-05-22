@@ -1,13 +1,14 @@
 package com.ticketorchestra.reservation.domain;
 
+import com.ticketorchestra.common.id.EventId;
+import com.ticketorchestra.common.id.SeatId;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.UUID;
 
 @Service
 public class PricingService {
-    public double calculateTotal(UUID eventId, List<UUID> seatIds) {
+    public double calculateTotal(EventId eventId, List<SeatId> seatIds) {
         // Mocked dynamic pricing
         return seatIds.size() * 100.0;
     }

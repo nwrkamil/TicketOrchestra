@@ -16,6 +16,7 @@ import software.amazon.awssdk.services.sqs.model.MessageAttributeValue;
 import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -52,7 +53,7 @@ public class OutboxRelay {
             sqsClient.sendMessage(SendMessageRequest.builder()
                     .queueUrl(qUrl)
                     .messageBody(event.getPayload())
-                    .messageAttributes(java.util.Map.of(
+                    .messageAttributes(Map.of(
                             "Type", MessageAttributeValue.builder()
                                     .dataType("String")
                                     .stringValue(event.getType())

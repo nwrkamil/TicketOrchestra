@@ -18,6 +18,10 @@ public class Event {
     private String title;
     private String description;
     private Instant dateTime;
+    /**
+     * In this simplified PoC, the Venue entity is not explicitly modeled.
+     * Information about the venue is flattened into Events and Seats for simplicity.
+     */
     private UUID venueId;
     private EventStatus status;
 

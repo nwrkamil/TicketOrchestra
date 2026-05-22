@@ -1,6 +1,8 @@
 package com.ticketorchestra.payment.infrastructure;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ticketorchestra.common.id.IntegrationEventId;
+import com.ticketorchestra.common.id.ReservationId;
 import com.ticketorchestra.common.messaging.IntegrationEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -13,6 +15,7 @@ import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
@@ -52,24 +55,24 @@ public class PaymentListener {
 
             try {
                 IntegrationEvent incomingEvent = objectMapper.readValue(message.body(), IntegrationEvent.class);
-                UUID reservationId = incomingEvent.reservationId();
+                ReservationId reservationId = new ReservationId(incomingEvent.reservationId());
 
                 boolean success = paymentService.processPayment(reservationId, 100.0);
 
                 String eventType = success ? "PAYMENT_COMPLETED" : "PAYMENT_FAILED";
-                UUID paymentEventId = UUID.randomUUID();
+                IntegrationEventId paymentEventId = IntegrationEventId.random();
                 sqsClient.sendMessage(SendMessageRequest.builder()
                         .queueUrl(payQueueUrl)
                         .messageBody(objectMapper.writeValueAsString(
                                 IntegrationEvent.forReservation(paymentEventId, reservationId)))
-                        .messageAttributes(java.util.Map.of(
+                        .messageAttributes(Map.of(
                                 "Type", MessageAttributeValue.builder()
                                         .dataType("String")
                                         .stringValue(eventType)
                                         .build(),
                                 "IdempotencyKey", MessageAttributeValue.builder()
                                         .dataType("String")
-                                        .stringValue(paymentEventId.toString())
+                                        .stringValue(paymentEventId.id().toString())
                                         .build()))
                         .build());
 

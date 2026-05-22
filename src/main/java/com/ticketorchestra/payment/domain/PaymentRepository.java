@@ -1,10 +1,11 @@
 package com.ticketorchestra.payment.domain;
 
+import com.ticketorchestra.common.id.PaymentId;
+import com.ticketorchestra.common.id.ReservationId;
+
 import java.util.Optional;
-import java.util.UUID;
 
 public interface PaymentRepository {
     void save(Payment payment);
-    Optional<Payment> findById(UUID paymentId);
-    Optional<Payment> findByReservationId(UUID reservationId);
+    Optional<Payment> findByReservationId(ReservationId reservationId);
 }
