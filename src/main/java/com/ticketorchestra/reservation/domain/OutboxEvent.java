@@ -20,7 +20,12 @@ public class OutboxEvent {
     private String type;
     private String payload;
     private Instant createdAt;
-    private boolean processed;
+    private OutboxStatus status;
+    private String leaseOwner;
+    private Instant leaseExpiresAt;
+    private int retryCount;
+    private String lastErrorMessage;
+    private Instant nextRetryAt;
 
     public OutboxEvent(IntegrationEventId eventId, String aggregateId, String type, String payload) {
         this.eventId = eventId.id();
@@ -28,9 +33,16 @@ public class OutboxEvent {
         this.type = type;
         this.payload = payload;
         this.createdAt = Instant.now();
-        this.processed = false;
+        this.status = OutboxStatus.NEW;
+        this.retryCount = 0;
     }
 
     @DynamoDbPartitionKey
     public UUID getEventId() { return eventId; }
+
+    @software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbSecondarySortKey(indexNames = "StatusIndex")
+    public Instant getCreatedAt() { return createdAt; }
+
+    @software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbSecondaryPartitionKey(indexNames = "StatusIndex")
+    public OutboxStatus getStatus() { return status; }
 }

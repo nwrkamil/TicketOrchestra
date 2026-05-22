@@ -6,18 +6,19 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.localstack.LocalStackContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
-@Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
 public abstract class BaseIntegrationTest {
 
-    @Container
-    static LocalStackContainer localStack = new LocalStackContainer(DockerImageName.parse("localstack/localstack:3.0"))
-            .withServices(LocalStackContainer.Service.DYNAMODB, LocalStackContainer.Service.SQS);
+    static final LocalStackContainer localStack;
+
+    static {
+        localStack = new LocalStackContainer(DockerImageName.parse("localstack/localstack:3.0"))
+                .withServices(LocalStackContainer.Service.DYNAMODB, LocalStackContainer.Service.SQS);
+        localStack.start();
+    }
 
     @LocalServerPort
     protected int port;

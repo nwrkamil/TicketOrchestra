@@ -1,6 +1,5 @@
 package com.ticketorchestra.payment.infrastructure;
 
-import com.ticketorchestra.common.id.PaymentId;
 import com.ticketorchestra.common.id.ReservationId;
 import com.ticketorchestra.payment.domain.Payment;
 import com.ticketorchestra.payment.domain.PaymentRepository;

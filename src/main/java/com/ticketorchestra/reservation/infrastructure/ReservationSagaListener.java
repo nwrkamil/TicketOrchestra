@@ -37,6 +37,7 @@ public class ReservationSagaListener {
 
     @Scheduled(fixedDelay = 2000)
     public void listen() {
+
         String qUrl = getQueueUrl();
         if (qUrl == null) {
             return;
@@ -52,6 +53,7 @@ public class ReservationSagaListener {
         List<Message> messages = sqsClient.receiveMessage(receiveRequest).messages();
 
         for (Message message : messages) {
+            // ... (processing logic)
             log.info("Processing message: {}", message.body());
             var attributes = message.messageAttributes();
             if (attributes == null || !attributes.containsKey("Type")) {
