@@ -1,28 +1,25 @@
 package com.ticketorchestra.reservation;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ticketorchestra.BaseIntegrationTest;
 import com.ticketorchestra.common.id.EventId;
-import com.ticketorchestra.common.id.IntegrationEventId;
 import com.ticketorchestra.common.id.ReservationId;
 import com.ticketorchestra.common.id.SeatId;
-import com.ticketorchestra.common.messaging.IntegrationEvent;
+import com.ticketorchestra.common.messaging.PaymentStatusEvent;
 import com.ticketorchestra.inventory.domain.Event;
 import com.ticketorchestra.inventory.domain.InventoryRepository;
 import com.ticketorchestra.inventory.domain.Seat;
 import com.ticketorchestra.reservation.domain.Reservation;
 import com.ticketorchestra.reservation.domain.ReservationRepository;
 import com.ticketorchestra.reservation.infrastructure.ReservationSagaListener;
+import io.awspring.cloud.sqs.operations.SqsTemplate;
 import io.restassured.http.ContentType;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import software.amazon.awssdk.services.sqs.SqsClient;
-import software.amazon.awssdk.services.sqs.model.GetQueueUrlRequest;
-import software.amazon.awssdk.services.sqs.model.MessageAttributeValue;
-import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
+import software.amazon.awssdk.enhanced.dynamodb.TableSchema;
+import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
+import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -30,7 +27,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -52,10 +48,10 @@ public class ReservationE2ETest extends BaseIntegrationTest {
     private ReservationSagaListener reservationSagaListener;
 
     @Autowired
-    private SqsClient sqsClient;
+    private SqsTemplate sqsTemplate;
 
     @Autowired
-    private ObjectMapper objectMapper;
+    private DynamoDbClient dynamoDbClient;
 
     private String baseUrl;
 
@@ -152,13 +148,14 @@ public class ReservationE2ETest extends BaseIntegrationTest {
         saveLockedSeat(new EventId(eventId), new SeatId(seatId), new ReservationId(reservationId));
         saveReservation(new ReservationId(reservationId), new EventId(eventId), new SeatId(seatId), Reservation.ReservationStatus.PENDING);
 
-        sendPaymentEventTwice("PAYMENT_COMPLETED", new ReservationId(reservationId));
-        reservationSagaListener.listen();
-
-        Reservation reservation = reservationRepository.findById(new ReservationId(reservationId)).orElseThrow();
-        Seat seat = inventoryRepository.findSeat(new EventId(eventId), new SeatId(seatId)).orElseThrow();
-        assertEquals(Reservation.ReservationStatus.PAID, reservation.getStatus());
-        assertEquals(Seat.SeatStatus.SOLD, seat.getStatus());
+        sendPaymentEventTwice("SUCCESS", new ReservationId(reservationId));
+        
+        await().untilAsserted(() -> {
+            Reservation reservation = reservationRepository.findById(new ReservationId(reservationId)).orElseThrow();
+            Seat seat = inventoryRepository.findSeat(new EventId(eventId), new SeatId(seatId)).orElseThrow();
+            assertEquals(Reservation.ReservationStatus.PAID, reservation.getStatus());
+            assertEquals(Seat.SeatStatus.SOLD, seat.getStatus());
+        });
     }
 
     @Test
@@ -171,18 +168,29 @@ public class ReservationE2ETest extends BaseIntegrationTest {
         saveLockedSeat(new EventId(eventId), new SeatId(seatId), new ReservationId(firstReservationId));
         saveReservation(new ReservationId(firstReservationId), new EventId(eventId), new SeatId(seatId), Reservation.ReservationStatus.PENDING);
 
-        sendPaymentEvent("PAYMENT_FAILED", new ReservationId(firstReservationId));
-        reservationSagaListener.listen();
+        sendPaymentEvent("FAILED", new ReservationId(firstReservationId));
+        
+        await().untilAsserted(() -> {
+            Reservation res = reservationRepository.findById(new ReservationId(firstReservationId)).orElseThrow();
+            assertEquals(Reservation.ReservationStatus.CANCELLED, res.getStatus());
+        });
 
         saveLockedSeat(new EventId(eventId), new SeatId(seatId), new ReservationId(secondReservationId));
         saveReservation(new ReservationId(secondReservationId), new EventId(eventId), new SeatId(seatId), Reservation.ReservationStatus.PENDING);
 
-        sendPaymentEvent("PAYMENT_FAILED", new ReservationId(firstReservationId));
-        reservationSagaListener.listen();
+        await().untilAsserted(() -> {
+            Seat seat = inventoryRepository.findSeat(new EventId(eventId), new SeatId(seatId)).orElseThrow();
+            assertEquals(Seat.SeatStatus.LOCKED, seat.getStatus());
+            assertEquals(secondReservationId, seat.getLockOwner());
+        });
 
-        Seat seat = inventoryRepository.findSeat(new EventId(eventId), new SeatId(seatId)).orElseThrow();
-        assertEquals(Seat.SeatStatus.LOCKED, seat.getStatus());
-        assertEquals(secondReservationId, seat.getLockOwner());
+        sendPaymentEvent("FAILED", new ReservationId(firstReservationId));
+
+        await().untilAsserted(() -> {
+            Seat seat = inventoryRepository.findSeat(new EventId(eventId), new SeatId(seatId)).orElseThrow();
+            assertEquals(Seat.SeatStatus.LOCKED, seat.getStatus());
+            assertEquals(secondReservationId, seat.getLockOwner());
+        });
     }
 
     private void createEvent(EventId eventId) {
@@ -206,15 +214,16 @@ public class ReservationE2ETest extends BaseIntegrationTest {
     }
 
     private void saveLockedSeat(EventId eventId, SeatId seatId, ReservationId lockOwner) {
-        Seat seat = inventoryRepository.findSeat(eventId, seatId).orElseGet(Seat::new);
-        if (seat.getEventId() == null) {
-            seat.setEventId(eventId.id());
-            seat.setSeatId(seatId.id());
-            seat.setPrice(100.0);
-        }
+        Seat seat = new Seat();
+        seat.setEventId(eventId.id());
+        seat.setSeatId(seatId.id());
+        seat.setPrice(100.0);
         seat.setStatus(Seat.SeatStatus.LOCKED);
         seat.setLockOwner(lockOwner.id());
-        inventoryRepository.saveSeat(seat);
+        dynamoDbClient.putItem(PutItemRequest.builder()
+                .tableName("Seats")
+                .item(TableSchema.fromBean(Seat.class).itemToMap(seat, true))
+                .build());
     }
 
     private void saveReservation(ReservationId reservationId,
@@ -232,31 +241,22 @@ public class ReservationE2ETest extends BaseIntegrationTest {
         reservationRepository.save(reservation);
     }
 
-    private void sendPaymentEventTwice(String eventType, ReservationId reservationId) throws JsonProcessingException {
-        sendPaymentEvent(eventType, reservationId);
-        sendPaymentEvent(eventType, reservationId);
+    private void sendPaymentEventTwice(String status, ReservationId reservationId) {
+        sendPaymentEvent(status, reservationId);
+        sendPaymentEvent(status, reservationId);
     }
 
-    private void sendPaymentEvent(String eventType, ReservationId reservationId) throws JsonProcessingException {
-        IntegrationEventId eventId = IntegrationEventId.random();
-        String queueUrl = sqsClient.getQueueUrl(GetQueueUrlRequest.builder()
-                .queueName("payment-events")
-                .build()).queueUrl();
+    private void sendPaymentEvent(String status, ReservationId reservationId) {
+        PaymentStatusEvent event = new PaymentStatusEvent(
+                UUID.randomUUID(),
+                reservationId.id(),
+                status
+        );
 
-        sqsClient.sendMessage(SendMessageRequest.builder()
-                .queueUrl(queueUrl)
-                .messageBody(objectMapper.writeValueAsString(
-                        IntegrationEvent.forReservation(eventId, reservationId)))
-                .messageAttributes(Map.of(
-                        "Type", MessageAttributeValue.builder()
-                                .dataType("String")
-                                .stringValue(eventType)
-                                .build(),
-                        "IdempotencyKey", MessageAttributeValue.builder()
-                                .dataType("String")
-                                .stringValue(eventId.id().toString())
-                                .build()))
-                .build());
+        sqsTemplate.send(to -> to
+                .queue("payment-events")
+                .payload(event)
+                .header("Type", "PAYMENT_STATUS"));
     }
 }
 

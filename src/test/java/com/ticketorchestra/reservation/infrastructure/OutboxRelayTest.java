@@ -13,6 +13,8 @@ import software.amazon.awssdk.enhanced.dynamodb.TableSchema;
 import software.amazon.awssdk.enhanced.dynamodb.Key;
 
 import java.time.Instant;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -30,20 +32,19 @@ class OutboxRelayTest extends BaseIntegrationTest {
     void shouldRelayNewEvents() {
         DynamoDbTable<OutboxEvent> table = enhancedClient.table("Outbox", TableSchema.fromBean(OutboxEvent.class));
         IntegrationEventId eventId = IntegrationEventId.random();
-        OutboxEvent event = new OutboxEvent(eventId, "agg1", "TYPE", "{}");
-        try {
-            table.putItem(event);
-        } catch (Exception e) {
-            log.error("Failed to put item into Outbox table", e);
-            throw e;
-        }
+        UUID reservationId = UUID.randomUUID();
+        OutboxEvent event = new OutboxEvent(eventId, reservationId.toString(), "TYPE", "{}");
+        table.putItem(event);
 
+        // Manually trigger or wait for scheduler
         outboxRelay.relayEvents();
 
-        await().untilAsserted(() -> {
+        await().atMost(10, TimeUnit.SECONDS).untilAsserted(() -> {
             OutboxEvent processed = table.getItem(k -> k.key(Key.builder().partitionValue(eventId.id().toString()).build()));
-            log.info("Event status: {}", (processed != null ? processed.getStatus() : "null"));
-            assertEquals(OutboxStatus.SENT, processed.getStatus());
+            if (processed != null) {
+                log.info("Current event status: {}", processed.getStatus());
+            }
+            assertEquals(OutboxStatus.SENT, processed != null ? processed.getStatus() : null);
         });
     }
 
@@ -51,15 +52,13 @@ class OutboxRelayTest extends BaseIntegrationTest {
     void shouldRetryFailedEventsWithBackoff() {
         DynamoDbTable<OutboxEvent> table = enhancedClient.table("Outbox", TableSchema.fromBean(OutboxEvent.class));
         IntegrationEventId eventId = IntegrationEventId.random();
-        OutboxEvent event = new OutboxEvent(eventId, "agg1", "FAIL", "{}");
+        UUID reservationId = UUID.randomUUID();
+        OutboxEvent event = new OutboxEvent(eventId, reservationId.toString(), "FAIL", "{}");
         event.setStatus(OutboxStatus.FAILED);
         event.setRetryCount(1);
         event.setNextRetryAt(Instant.now().minusSeconds(1)); // Should be eligible for retry
         table.putItem(event);
 
         outboxRelay.relayEvents();
-
-        // In a real test we would mock the SQS client to throw an exception to test failure handling,
-        // but here we verify it gets picked up.
     }
 }

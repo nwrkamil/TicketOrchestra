@@ -1,4 +1,13 @@
 spring:
   cloud:
     aws:
+      region:
+        static: us-east-1
+      credentials:
+        access-key: test
+        secret-key: test
       endpoint: http://localhost:4566
+      dynamodb:
+        endpoint: http://localhost:4566
+      sqs:
+        endpoint: http://localhost:4566

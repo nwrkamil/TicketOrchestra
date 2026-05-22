@@ -1,7 +1,5 @@
 package com.ticketorchestra.reservation.domain;
 
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ticketorchestra.common.id.EventId;
@@ -10,6 +8,9 @@ import com.ticketorchestra.common.id.ReservationId;
 import com.ticketorchestra.common.id.SeatId;
 import com.ticketorchestra.common.messaging.IntegrationEvent;
 import com.ticketorchestra.inventory.InventoryService;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -21,7 +22,6 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 @Slf4j
 @Service
@@ -107,7 +107,11 @@ public class ReservationService {
 
     public void confirmReservation(ReservationId reservationId) {
         Reservation reservation = repository.findById(reservationId)
-                .orElseThrow(() -> new RuntimeException("Reservation not found"));
+                .orElse(null);
+        if (reservation == null) {
+            log.warn("Ignoring payment completion for missing reservation: {}", reservationId);
+            return;
+        }
 
         if (reservation.getStatus() == Reservation.ReservationStatus.PAID) {
             log.info("Reservation already confirmed: {}", reservationId);
@@ -128,7 +132,11 @@ public class ReservationService {
 
     public void cancelReservation(ReservationId reservationId) {
         Reservation reservation = repository.findById(reservationId)
-                .orElseThrow(() -> new RuntimeException("Reservation not found"));
+                .orElse(null);
+        if (reservation == null) {
+            log.warn("Ignoring payment failure for missing reservation: {}", reservationId);
+            return;
+        }
 
         if (reservation.getStatus() == Reservation.ReservationStatus.CANCELLED) {
             log.info("Reservation already cancelled: {}", reservationId);

@@ -17,7 +17,7 @@ TicketOrchestra is a high-performance, distributed ticket reservation system des
 **Decision**: Use an event-driven choreography approach via Amazon SQS.
 **Rationale**: In a high-load ticket system, a central orchestrator can become a bottleneck. Choreography allows services (Reservation, Payment, Inventory) to scale independently and reduces tight coupling.
 
-### ADR 2: Java 25 Virtual Threads (Project Loom)
+### ADR 2: Java 21 Virtual Threads (Project Loom)
 **Decision**: Use Virtual Threads for I/O-bound parallel tasks.
 **Rationale**: When a reservation starts, we concurrently check fraud, calculate pricing, and lock seats. Virtual threads allow us to perform these blocking I/O calls to AWS services without exhausting the platform thread pool, maintaining extremely high throughput.
 

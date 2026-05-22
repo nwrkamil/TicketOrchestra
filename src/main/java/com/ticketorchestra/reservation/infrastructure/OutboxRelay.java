@@ -1,21 +1,18 @@
 package com.ticketorchestra.reservation.infrastructure;
 
+import com.ticketorchestra.common.messaging.MessagingGateway;
+import com.ticketorchestra.common.messaging.ReservationCreatedEvent;
 import com.ticketorchestra.reservation.domain.OutboxEvent;
 import com.ticketorchestra.reservation.domain.OutboxStatus;
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.enhanced.dynamodb.*;
 import software.amazon.awssdk.enhanced.dynamodb.model.QueryConditional;
 import software.amazon.awssdk.enhanced.dynamodb.model.QueryEnhancedRequest;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
-import software.amazon.awssdk.services.sqs.SqsClient;
-import software.amazon.awssdk.services.sqs.model.GetQueueUrlRequest;
-import software.amazon.awssdk.services.sqs.model.MessageAttributeValue;
-import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
+import software.amazon.awssdk.services.dynamodb.model.ResourceNotFoundException;
 
 import java.time.Instant;
 import java.util.List;
@@ -28,13 +25,10 @@ import java.util.UUID;
 public class OutboxRelay {
 
     private final DynamoDbEnhancedClient enhancedClient;
-    @SuppressFBWarnings("EI2")
-    @Lazy
-    private final SqsClient sqsClient;
+    private final MessagingGateway messagingGateway;
     
     private final String instanceId = UUID.randomUUID().toString();
     private static final int LEASE_SECONDS = 30;
-    private String queueUrl;
 
     @Scheduled(fixedDelay = 5000)
     public void relayEvents() {
@@ -51,7 +45,7 @@ public class OutboxRelay {
                         .filter(e -> e.getNextRetryAt() == null || e.getNextRetryAt().isBefore(Instant.now()))
                         .forEach(this::processEvent);
             }
-        } catch (software.amazon.awssdk.services.dynamodb.model.ResourceNotFoundException e) {
+        } catch (ResourceNotFoundException e) {
             log.debug("Outbox table not yet initialized");
         } catch (Exception e) {
             log.error("Unexpected error in OutboxRelay: {}", e.getMessage(), e);
@@ -64,16 +58,12 @@ public class OutboxRelay {
         }
 
         try {
-            String qUrl = getQueueUrl();
-            if (qUrl == null) throw new RuntimeException("Queue URL is null");
-            
-            sqsClient.sendMessage(SendMessageRequest.builder()
-                    .queueUrl(qUrl)
-                    .messageBody(event.getPayload())
-                    .messageAttributes(Map.of(
-                            "Type", MessageAttributeValue.builder().dataType("String").stringValue(event.getType()).build(),
-                            "IdempotencyKey", MessageAttributeValue.builder().dataType("String").stringValue(event.getEventId().toString()).build()))
-                    .build());
+            ReservationCreatedEvent payload = new ReservationCreatedEvent(
+                    event.getEventId(),
+                    UUID.fromString(event.getAggregateId())
+            );
+
+            messagingGateway.sendToReservationEvents(payload, "RESERVATION_CREATED");
 
             event.setStatus(OutboxStatus.SENT);
             event.setLeaseOwner(null);
@@ -94,40 +84,33 @@ public class OutboxRelay {
 
     private boolean claimEvent(OutboxEvent event) {
         try {
+            OutboxStatus originalStatus = event.getStatus();
+            
+            // Prepare the "claimed" state in the object before sending to DynamoDB
+            event.setStatus(OutboxStatus.PROCESSING);
+            event.setLeaseOwner(instanceId);
+            event.setLeaseExpiresAt(Instant.now().plusSeconds(LEASE_SECONDS));
+
             getOutboxTable().updateItem(r -> r.item(event)
                     .conditionExpression(Expression.builder()
                             .expression("eventId = :id AND #s = :expectedStatus AND (attribute_not_exists(leaseOwner) OR leaseOwner = :null OR leaseExpiresAt < :now)")
                             .expressionNames(Map.of("#s", "status"))
                             .expressionValues(Map.of(
                                     ":id", AttributeValue.builder().s(event.getEventId().toString()).build(),
-                                    ":expectedStatus", AttributeValue.builder().s(event.getStatus().name()).build(),
+                                    ":expectedStatus", AttributeValue.builder().s(originalStatus.name()).build(),
                                     ":null", AttributeValue.builder().nul(true).build(),
                                     ":now", AttributeValue.builder().s(Instant.now().toString()).build()
                             ))
                             .build()));
             
-            event.setStatus(OutboxStatus.PROCESSING);
-            event.setLeaseOwner(instanceId);
-            event.setLeaseExpiresAt(Instant.now().plusSeconds(LEASE_SECONDS));
-            getOutboxTable().updateItem(event);
             return true;
         } catch (Exception e) {
+            log.debug("Could not claim event {}: {}", event.getEventId(), e.getMessage());
             return false;
         }
     }
 
     private DynamoDbTable<OutboxEvent> getOutboxTable() {
         return enhancedClient.table("Outbox", TableSchema.fromBean(OutboxEvent.class));
-    }
-
-    private String getQueueUrl() {
-        if (queueUrl == null) {
-            try {
-                queueUrl = sqsClient.getQueueUrl(GetQueueUrlRequest.builder().queueName("reservation-events").build()).queueUrl();
-            } catch (Exception e) {
-                log.error("Failed to resolve reservation-events queue URL in OutboxRelay: {}", e.getMessage());
-            }
-        }
-        return queueUrl;
     }
 }

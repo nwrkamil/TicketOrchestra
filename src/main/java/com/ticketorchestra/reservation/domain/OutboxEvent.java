@@ -6,6 +6,8 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbSecondaryPartitionKey;
+import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbSecondarySortKey;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -40,9 +42,9 @@ public class OutboxEvent {
     @DynamoDbPartitionKey
     public UUID getEventId() { return eventId; }
 
-    @software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbSecondarySortKey(indexNames = "StatusIndex")
+    @DynamoDbSecondarySortKey(indexNames = "StatusIndex")
     public Instant getCreatedAt() { return createdAt; }
 
-    @software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbSecondaryPartitionKey(indexNames = "StatusIndex")
+    @DynamoDbSecondaryPartitionKey(indexNames = "StatusIndex")
     public OutboxStatus getStatus() { return status; }
 }
