@@ -3,6 +3,10 @@ package com.ticketorchestra.reservation;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ticketorchestra.BaseIntegrationTest;
+import com.ticketorchestra.common.id.EventId;
+import com.ticketorchestra.common.id.IntegrationEventId;
+import com.ticketorchestra.common.id.ReservationId;
+import com.ticketorchestra.common.id.SeatId;
 import com.ticketorchestra.common.messaging.IntegrationEvent;
 import com.ticketorchestra.inventory.domain.Event;
 import com.ticketorchestra.inventory.domain.InventoryRepository;
@@ -104,9 +108,9 @@ public class ReservationE2ETest extends BaseIntegrationTest {
         UUID eventId = UUID.randomUUID();
         UUID availableSeatId = UUID.randomUUID();
         UUID unavailableSeatId = UUID.randomUUID();
-        createEvent(eventId);
-        saveSeat(eventId, availableSeatId, Seat.SeatStatus.AVAILABLE);
-        saveSeat(eventId, unavailableSeatId, Seat.SeatStatus.LOCKED);
+        createEvent(new EventId(eventId));
+        saveSeat(new EventId(eventId), new SeatId(availableSeatId), Seat.SeatStatus.AVAILABLE);
+        saveSeat(new EventId(eventId), new SeatId(unavailableSeatId), Seat.SeatStatus.LOCKED);
 
         given().contentType(ContentType.JSON)
                 .body("{\"userId\": \"test-user\", \"eventId\": \"" + eventId + "\", \"seatIds\": [\""
@@ -115,17 +119,17 @@ public class ReservationE2ETest extends BaseIntegrationTest {
                 .then().statusCode(500);
 
         assertEquals(Seat.SeatStatus.AVAILABLE,
-                inventoryRepository.findSeat(eventId, availableSeatId).orElseThrow().getStatus());
+                inventoryRepository.findSeat(new EventId(eventId), new SeatId(availableSeatId)).orElseThrow().getStatus());
         assertEquals(Seat.SeatStatus.LOCKED,
-                inventoryRepository.findSeat(eventId, unavailableSeatId).orElseThrow().getStatus());
+                inventoryRepository.findSeat(new EventId(eventId), new SeatId(unavailableSeatId)).orElseThrow().getStatus());
     }
 
     @Test
     void shouldNotLockSeatsWhenAntiFraudFails() {
         UUID eventId = UUID.randomUUID();
         UUID seatId = UUID.randomUUID();
-        createEvent(eventId);
-        saveSeat(eventId, seatId, Seat.SeatStatus.AVAILABLE);
+        createEvent(new EventId(eventId));
+        saveSeat(new EventId(eventId), new SeatId(seatId), Seat.SeatStatus.AVAILABLE);
 
         given().contentType(ContentType.JSON)
                 .body("{\"userId\": \"fraud-user\", \"eventId\": \"" + eventId + "\", \"seatIds\": [\""
@@ -134,7 +138,7 @@ public class ReservationE2ETest extends BaseIntegrationTest {
                 .then().statusCode(500);
 
         assertEquals(Seat.SeatStatus.AVAILABLE,
-                inventoryRepository.findSeat(eventId, seatId).orElseThrow().getStatus());
+                inventoryRepository.findSeat(new EventId(eventId), new SeatId(seatId)).orElseThrow().getStatus());
     }
 
     @Test
@@ -142,15 +146,15 @@ public class ReservationE2ETest extends BaseIntegrationTest {
         UUID eventId = UUID.randomUUID();
         UUID seatId = UUID.randomUUID();
         UUID reservationId = UUID.randomUUID();
-        createEvent(eventId);
-        saveLockedSeat(eventId, seatId, reservationId);
-        saveReservation(reservationId, eventId, seatId, Reservation.ReservationStatus.PENDING);
+        createEvent(new EventId(eventId));
+        saveLockedSeat(new EventId(eventId), new SeatId(seatId), new ReservationId(reservationId));
+        saveReservation(new ReservationId(reservationId), new EventId(eventId), new SeatId(seatId), Reservation.ReservationStatus.PENDING);
 
-        sendPaymentEventTwice("PAYMENT_COMPLETED", reservationId);
+        sendPaymentEventTwice("PAYMENT_COMPLETED", new ReservationId(reservationId));
         reservationSagaListener.listen();
 
-        Reservation reservation = reservationRepository.findById(reservationId).orElseThrow();
-        Seat seat = inventoryRepository.findSeat(eventId, seatId).orElseThrow();
+        Reservation reservation = reservationRepository.findById(new ReservationId(reservationId)).orElseThrow();
+        Seat seat = inventoryRepository.findSeat(new EventId(eventId), new SeatId(seatId)).orElseThrow();
         assertEquals(Reservation.ReservationStatus.PAID, reservation.getStatus());
         assertEquals(Seat.SeatStatus.SOLD, seat.getStatus());
     }
@@ -161,27 +165,27 @@ public class ReservationE2ETest extends BaseIntegrationTest {
         UUID seatId = UUID.randomUUID();
         UUID firstReservationId = UUID.randomUUID();
         UUID secondReservationId = UUID.randomUUID();
-        createEvent(eventId);
-        saveLockedSeat(eventId, seatId, firstReservationId);
-        saveReservation(firstReservationId, eventId, seatId, Reservation.ReservationStatus.PENDING);
+        createEvent(new EventId(eventId));
+        saveLockedSeat(new EventId(eventId), new SeatId(seatId), new ReservationId(firstReservationId));
+        saveReservation(new ReservationId(firstReservationId), new EventId(eventId), new SeatId(seatId), Reservation.ReservationStatus.PENDING);
 
-        sendPaymentEvent("PAYMENT_FAILED", firstReservationId);
+        sendPaymentEvent("PAYMENT_FAILED", new ReservationId(firstReservationId));
         reservationSagaListener.listen();
 
-        saveLockedSeat(eventId, seatId, secondReservationId);
-        saveReservation(secondReservationId, eventId, seatId, Reservation.ReservationStatus.PENDING);
+        saveLockedSeat(new EventId(eventId), new SeatId(seatId), new ReservationId(secondReservationId));
+        saveReservation(new ReservationId(secondReservationId), new EventId(eventId), new SeatId(seatId), Reservation.ReservationStatus.PENDING);
 
-        sendPaymentEvent("PAYMENT_FAILED", firstReservationId);
+        sendPaymentEvent("PAYMENT_FAILED", new ReservationId(firstReservationId));
         reservationSagaListener.listen();
 
-        Seat seat = inventoryRepository.findSeat(eventId, seatId).orElseThrow();
+        Seat seat = inventoryRepository.findSeat(new EventId(eventId), new SeatId(seatId)).orElseThrow();
         assertEquals(Seat.SeatStatus.LOCKED, seat.getStatus());
         assertEquals(secondReservationId, seat.getLockOwner());
     }
 
-    private void createEvent(UUID eventId) {
+    private void createEvent(EventId eventId) {
         Event event = new Event();
-        event.setEventId(eventId);
+        event.setEventId(eventId.id());
         event.setTitle("Test Event");
         event.setDescription("Desc");
         event.setDateTime(Instant.parse("2026-05-20T10:00:00Z"));
@@ -190,56 +194,57 @@ public class ReservationE2ETest extends BaseIntegrationTest {
         inventoryRepository.saveEvent(event);
     }
 
-    private void saveSeat(UUID eventId, UUID seatId, Seat.SeatStatus status) {
+    private void saveSeat(EventId eventId, SeatId seatId, Seat.SeatStatus status) {
         Seat seat = new Seat();
-        seat.setEventId(eventId);
-        seat.setSeatId(seatId);
+        seat.setEventId(eventId.id());
+        seat.setSeatId(seatId.id());
         seat.setPrice(100.0);
         seat.setStatus(status);
         inventoryRepository.saveSeat(seat);
     }
 
-    private void saveLockedSeat(UUID eventId, UUID seatId, UUID lockOwner) {
+    private void saveLockedSeat(EventId eventId, SeatId seatId, ReservationId lockOwner) {
         Seat seat = inventoryRepository.findSeat(eventId, seatId).orElseGet(Seat::new);
         if (seat.getEventId() == null) {
-            seat.setEventId(eventId);
-            seat.setSeatId(seatId);
+            seat.setEventId(eventId.id());
+            seat.setSeatId(seatId.id());
             seat.setPrice(100.0);
         }
         seat.setStatus(Seat.SeatStatus.LOCKED);
-        seat.setLockOwner(lockOwner);
+        seat.setLockOwner(lockOwner.id());
         inventoryRepository.saveSeat(seat);
     }
 
-    private void saveReservation(UUID reservationId,
-                                 UUID eventId,
-                                 UUID seatId,
+    private void saveReservation(ReservationId reservationId,
+                                 EventId eventId,
+                                 SeatId seatId,
                                  Reservation.ReservationStatus status) {
         Reservation reservation = new Reservation();
-        reservation.setReservationId(reservationId);
+        reservation.setReservationId(reservationId.id());
         reservation.setUserId("test-user");
-        reservation.setEventId(eventId);
-        reservation.setSeatIds(List.of(seatId));
+        reservation.setEventId(eventId.id());
+        reservation.setSeatIds(List.of(seatId.id()));
         reservation.setTotalPrice(100.0);
         reservation.setStatus(status);
         reservation.setExpiresAt(Instant.now().plusSeconds(900));
         reservationRepository.save(reservation);
     }
 
-    private void sendPaymentEventTwice(String eventType, UUID reservationId) throws JsonProcessingException {
+    private void sendPaymentEventTwice(String eventType, ReservationId reservationId) throws JsonProcessingException {
         sendPaymentEvent(eventType, reservationId);
         sendPaymentEvent(eventType, reservationId);
     }
 
-    private void sendPaymentEvent(String eventType, UUID reservationId) throws JsonProcessingException {
-        UUID eventId = UUID.randomUUID();
+    private void sendPaymentEvent(String eventType, ReservationId reservationId) throws JsonProcessingException {
+        IntegrationEventId eventId = IntegrationEventId.random();
         String queueUrl = sqsClient.getQueueUrl(GetQueueUrlRequest.builder()
                 .queueName("payment-events")
                 .build()).queueUrl();
 
         sqsClient.sendMessage(SendMessageRequest.builder()
                 .queueUrl(queueUrl)
-                .messageBody(objectMapper.writeValueAsString(IntegrationEvent.forReservation(eventId, reservationId)))
+                .messageBody(objectMapper.writeValueAsString(
+                        IntegrationEvent.forReservation(eventId, reservationId)))
                 .messageAttributes(Map.of(
                         "Type", MessageAttributeValue.builder()
                                 .dataType("String")
@@ -247,8 +252,9 @@ public class ReservationE2ETest extends BaseIntegrationTest {
                                 .build(),
                         "IdempotencyKey", MessageAttributeValue.builder()
                                 .dataType("String")
-                                .stringValue(eventId.toString())
+                                .stringValue(eventId.id().toString())
                                 .build()))
                 .build());
     }
 }
+

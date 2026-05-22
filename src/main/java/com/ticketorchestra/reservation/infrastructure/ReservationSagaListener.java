@@ -1,6 +1,7 @@
 package com.ticketorchestra.reservation.infrastructure;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ticketorchestra.common.id.ReservationId;
 import com.ticketorchestra.common.messaging.IntegrationEvent;
 import lombok.extern.slf4j.Slf4j;
 import com.ticketorchestra.reservation.domain.ReservationService;
@@ -60,10 +61,11 @@ public class ReservationSagaListener {
             String type = attributes.get("Type").stringValue();
             try {
                 IntegrationEvent event = objectMapper.readValue(message.body(), IntegrationEvent.class);
+                ReservationId reservationId = new ReservationId(event.reservationId());
                 if ("PAYMENT_COMPLETED".equals(type)) {
-                    reservationService.confirmReservation(event.reservationId());
+                    reservationService.confirmReservation(reservationId);
                 } else if ("PAYMENT_FAILED".equals(type)) {
-                    reservationService.cancelReservation(event.reservationId());
+                    reservationService.cancelReservation(reservationId);
                 } else {
                     log.warn("Received unsupported payment event type: {}", type);
                     continue;

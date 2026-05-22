@@ -1,5 +1,8 @@
 package com.ticketorchestra.reservation.infrastructure;
 
+import com.ticketorchestra.common.id.EventId;
+import com.ticketorchestra.common.id.ReservationId;
+import com.ticketorchestra.common.id.SeatId;
 import com.ticketorchestra.reservation.domain.OutboxEvent;
 import com.ticketorchestra.reservation.domain.Reservation;
 import com.ticketorchestra.reservation.domain.ReservationCreationStore;
@@ -42,10 +45,12 @@ public class DynamoDbReservationCreationStore implements ReservationCreationStor
     @Override
     public void createWithSeatLocks(Reservation reservation, OutboxEvent outboxEvent) {
         List<TransactWriteItem> items = new ArrayList<>();
+        EventId eventId = new EventId(reservation.getEventId());
+        ReservationId reservationId = new ReservationId(reservation.getReservationId());
 
         for (UUID seatId : reservation.getSeatIds()) {
             items.add(TransactWriteItem.builder()
-                    .update(lockSeatUpdate(reservation.getEventId(), seatId, reservation.getReservationId()))
+                    .update(lockSeatUpdate(eventId, new SeatId(seatId), reservationId))
                     .build());
         }
 
@@ -74,24 +79,20 @@ public class DynamoDbReservationCreationStore implements ReservationCreationStor
         }
     }
 
-    private Update lockSeatUpdate(UUID eventId, UUID seatId, UUID lockOwner) {
+    private Update lockSeatUpdate(EventId eventId, SeatId seatId, ReservationId lockOwner) {
         return Update.builder()
                 .tableName(SEATS_TABLE)
                 .key(Map.of(
-                        "eventId", stringValue(eventId),
-                        "seatId", stringValue(seatId)))
+                        "eventId", stringValue(eventId.toString()),
+                        "seatId", stringValue(seatId.toString())))
                 .updateExpression("SET #status = :locked, lockOwner = :lockOwner")
                 .conditionExpression("#status = :available")
                 .expressionAttributeNames(Map.of("#status", "status"))
                 .expressionAttributeValues(Map.of(
                         ":available", stringValue("AVAILABLE"),
                         ":locked", stringValue("LOCKED"),
-                        ":lockOwner", stringValue(lockOwner)))
+                        ":lockOwner", stringValue(lockOwner.toString())))
                 .build();
-    }
-
-    private AttributeValue stringValue(UUID value) {
-        return AttributeValue.builder().s(value.toString()).build();
     }
 
     private AttributeValue stringValue(String value) {

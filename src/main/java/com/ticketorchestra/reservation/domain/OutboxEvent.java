@@ -1,5 +1,6 @@
 package com.ticketorchestra.reservation.domain;
 
+import com.ticketorchestra.common.id.IntegrationEventId;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -21,8 +22,8 @@ public class OutboxEvent {
     private Instant createdAt;
     private boolean processed;
 
-    public OutboxEvent(UUID eventId, String aggregateId, String type, String payload) {
-        this.eventId = eventId;
+    public OutboxEvent(IntegrationEventId eventId, String aggregateId, String type, String payload) {
+        this.eventId = eventId.id();
         this.aggregateId = aggregateId;
         this.type = type;
         this.payload = payload;

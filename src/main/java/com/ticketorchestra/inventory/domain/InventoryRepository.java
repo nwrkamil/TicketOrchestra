@@ -1,11 +1,13 @@
 package com.ticketorchestra.inventory.domain;
 
+import com.ticketorchestra.common.id.EventId;
+import com.ticketorchestra.common.id.SeatId;
+
 import java.util.Optional;
-import java.util.UUID;
 
 public interface InventoryRepository {
     void saveSeat(Seat seat);
-    Optional<Seat> findSeat(UUID eventId, UUID seatId);
+    Optional<Seat> findSeat(EventId eventId, SeatId seatId);
     void saveEvent(Event event);
-    Optional<Event> findEvent(UUID eventId);
+    Optional<Event> findEvent(EventId eventId);
 }

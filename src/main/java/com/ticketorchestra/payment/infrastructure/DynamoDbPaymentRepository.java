@@ -1,5 +1,7 @@
 package com.ticketorchestra.payment.infrastructure;
 
+import com.ticketorchestra.common.id.PaymentId;
+import com.ticketorchestra.common.id.ReservationId;
 import com.ticketorchestra.payment.domain.Payment;
 import com.ticketorchestra.payment.domain.PaymentRepository;
 import org.springframework.stereotype.Repository;
@@ -8,7 +10,6 @@ import software.amazon.awssdk.enhanced.dynamodb.DynamoDbTable;
 import software.amazon.awssdk.enhanced.dynamodb.TableSchema;
 
 import java.util.Optional;
-import java.util.UUID;
 
 @Repository
 public class DynamoDbPaymentRepository implements PaymentRepository {
@@ -25,15 +26,10 @@ public class DynamoDbPaymentRepository implements PaymentRepository {
     }
 
     @Override
-    public Optional<Payment> findById(UUID paymentId) {
-        return Optional.ofNullable(table.getItem(r -> r.key(k -> k.partitionValue(paymentId.toString()))));
-    }
-
-    @Override
-    public Optional<Payment> findByReservationId(UUID reservationId) {
+    public Optional<Payment> findByReservationId(ReservationId reservationId) {
         // Simple scan for demo purposes, in production use GSI
         return table.scan().items().stream()
-                .filter(p -> p.getReservationId().equals(reservationId))
+                .filter(p -> p.getReservationId().equals(reservationId.id()))
                 .findFirst();
     }
 }
