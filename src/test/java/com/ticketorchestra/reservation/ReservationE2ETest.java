@@ -58,20 +58,16 @@ public class ReservationE2ETest extends BaseIntegrationTest {
 
     @Test
     void shouldCompleteReservationSaga() {
-        UUID eventId = UUID.randomUUID();
-        UUID seatId = UUID.randomUUID();
         HttpClient httpClient = HttpClient.newHttpClient();
 
         // 1. Setup Event and Seat via Inventory API
-        given().contentType(ContentType.JSON)
-                .body("{\"eventId\": \"" + eventId + "\", \"title\": \"Test Event\", \"description\": \"Desc\", \"dateTime\": \"2026-05-20T10:00:00Z\", \"venueId\": \"" + UUID.randomUUID() + "\", \"status\": \"PUBLISHED\"}")
+        var createEventResponse = given().contentType(ContentType.JSON)
+                .body("{\"title\": \"Test Event\", \"description\": \"Desc\", \"dateTime\": \"2026-05-20T10:00:00Z\", \"venueId\": \"" + UUID.randomUUID() + "\", \"seatCount\": 1}")
                 .post(baseUrl + "/v1/inventory/events")
-                .then().statusCode(200);
-
-        given().contentType(ContentType.JSON)
-                .body("{\"eventId\": \"" + eventId + "\", \"seatId\": \"" + seatId + "\", \"price\": 100.0, \"status\": \"AVAILABLE\"}")
-                .post(baseUrl + "/v1/inventory/seats")
-                .then().statusCode(200);
+                .then().statusCode(201)
+                .extract();
+        UUID eventId = UUID.fromString(createEventResponse.path("eventId"));
+        UUID seatId = UUID.fromString(createEventResponse.path("seatIds[0]"));
 
         // 2. Trigger Reservation
         String reservationId = given().contentType(ContentType.JSON)
@@ -196,7 +192,6 @@ public class ReservationE2ETest extends BaseIntegrationTest {
         event.setDescription("Desc");
         event.setDateTime(Instant.parse("2026-05-20T10:00:00Z"));
         event.setVenueId(UUID.randomUUID());
-        event.setStatus(Event.EventStatus.PUBLISHED);
         inventoryRepository.saveEvent(event);
     }
 

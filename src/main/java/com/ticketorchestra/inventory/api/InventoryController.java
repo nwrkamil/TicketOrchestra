@@ -7,7 +7,14 @@ import com.ticketorchestra.inventory.domain.InventoryRepository;
 import com.ticketorchestra.inventory.domain.Seat;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+
+import jakarta.validation.Valid;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 
 /**
  * This controller and the inventory module represent a simplified abstraction.
@@ -22,19 +29,40 @@ public class InventoryController {
     private final InventoryRepository repository;
 
     @PostMapping("/events")
-    public void createEvent(@RequestBody Event event) {
+    @ResponseStatus(HttpStatus.CREATED)
+    public CreateEventResponse createEvent(@Valid @RequestBody CreateEventRequest request) {
+        UUID eventId = UUID.randomUUID();
+        Event event = new Event();
+        event.setEventId(eventId);
+        event.setTitle(request.title());
+        event.setDescription(request.description());
+        event.setDateTime(request.dateTime());
+        event.setVenueId(request.venueId());
         repository.saveEvent(event);
-    }
 
-    @PostMapping("/seats")
-    public void createSeat(@RequestBody Seat seat) {
-        seat.setStatus(Seat.SeatStatus.AVAILABLE);
-        repository.saveSeat(seat);
+        List<UUID> seatIds = new ArrayList<>(request.seatCount());
+        for (int i = 0; i < request.seatCount(); i++) {
+            UUID seatId = UUID.randomUUID();
+            Seat seat = new Seat();
+            seat.setEventId(eventId);
+            seat.setSeatId(seatId);
+            seat.setPrice(100.0);
+            seat.setStatus(Seat.SeatStatus.AVAILABLE);
+            repository.saveSeat(seat);
+            seatIds.add(seatId);
+        }
+
+        return new CreateEventResponse(eventId, request.venueId(), List.copyOf(seatIds));
     }
 
     @GetMapping("/events/{eventId}")
     public Event getEvent(@PathVariable EventId eventId) {
         return repository.findEvent(eventId).orElseThrow();
+    }
+
+    @GetMapping("/events")
+    public List<Event> getEvents() {
+        return repository.findAllEvents();
     }
 
     @GetMapping("/events/{eventId}/seats/{seatId}")
