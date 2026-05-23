@@ -1,7 +1,8 @@
 package com.ticketorchestra.common.config;
 
-import lombok.extern.slf4j.Slf4j;
+import com.ticketorchestra.common.messaging.SqsQueues;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.context.annotation.Profile;
@@ -16,6 +17,7 @@ import software.amazon.awssdk.services.sqs.model.SqsException;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 
 @Slf4j
 @Component
@@ -48,7 +50,7 @@ public class DynamoDbInitializer {
         });
     }
 
-    private void retryOperation(String name, java.util.function.Supplier<Boolean> operation) {
+    private void retryOperation(String name, Supplier<Boolean> operation) {
         int attempt = 0;
         while (attempt < MAX_RETRIES) {
             try {
@@ -127,8 +129,8 @@ public class DynamoDbInitializer {
     }
 
     private void createQueues() {
-        createQueue("reservation-events");
-        createQueue("payment-events");
+        createQueue(SqsQueues.RESERVATION_EVENTS);
+        createQueue(SqsQueues.PAYMENT_EVENTS);
     }
 
     private void createQueue(String queueName) {
