@@ -3,6 +3,7 @@ package com.ticketorchestra.reservation.api;
 import com.ticketorchestra.reservation.domain.Reservation;
 import com.ticketorchestra.reservation.domain.ReservationService;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -23,7 +24,8 @@ public class ReservationController {
     }
 
     @PostMapping
-    public Reservation create(@RequestBody CreateReservationRequest request) {
-        return service.createReservation(request);
+    public ReservationResponse create(@Valid @RequestBody CreateReservationRequest request) {
+        Reservation reservation = service.createReservation(request);
+        return ReservationResponse.from(reservation);
     }
 }

@@ -106,7 +106,7 @@ public class ReservationE2ETest extends BaseIntegrationTest {
                 .body("{\"userId\": \"test-user\", \"eventId\": \"" + eventId + "\", \"seatIds\": [\""
                         + availableSeatId + "\", \"" + unavailableSeatId + "\"]}")
                 .post(baseUrl + "/v1/reservations")
-                .then().statusCode(500);
+                .then().statusCode(409);
 
         assertEquals(Seat.SeatStatus.AVAILABLE,
                 inventoryRepository.findSeat(new EventId(eventId), new SeatId(availableSeatId)).orElseThrow().getStatus());
@@ -125,7 +125,7 @@ public class ReservationE2ETest extends BaseIntegrationTest {
                 .body("{\"userId\": \"fraud-user\", \"eventId\": \"" + eventId + "\", \"seatIds\": [\""
                         + seatId + "\"]}")
                 .post(baseUrl + "/v1/reservations")
-                .then().statusCode(500);
+                .then().statusCode(400);
 
         assertEquals(Seat.SeatStatus.AVAILABLE,
                 inventoryRepository.findSeat(new EventId(eventId), new SeatId(seatId)).orElseThrow().getStatus());

@@ -1,12 +1,11 @@
 package com.ticketorchestra.reservation.domain;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ticketorchestra.common.api.AntiFraudException;
 import com.ticketorchestra.common.id.EventId;
 import com.ticketorchestra.common.id.ReservationId;
 import com.ticketorchestra.common.id.SeatId;
 import com.ticketorchestra.inventory.InventoryService;
 import com.ticketorchestra.reservation.api.CreateReservationRequest;
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -27,8 +26,6 @@ public class ReservationService {
     private final ReservationValidator reservationValidator;
     private final AntiFraudService antiFraudService;
     private final PricingService pricingService;
-    @SuppressFBWarnings("EI2")
-    private final ObjectMapper objectMapper;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
 
     public Reservation createReservation(CreateReservationRequest request) {
@@ -48,7 +45,7 @@ public class ReservationService {
         CompletableFuture.allOf(antiFraudCheck, pricing).join();
 
         if (!antiFraudCheck.join()) {
-            throw new RuntimeException("Anti-fraud check failed");
+            throw new AntiFraudException("Anti-fraud check failed for user: " + reservation.getUserId());
         }
 
         reservation.setTotalPrice(pricing.join());

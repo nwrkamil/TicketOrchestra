@@ -1,7 +1,9 @@
 package com.ticketorchestra.reservation.domain;
 
-public class SeatUnavailableException extends RuntimeException {
+import com.ticketorchestra.common.api.DomainException;
+
+public class SeatUnavailableException extends DomainException {
     public SeatUnavailableException(String message, Throwable cause) {
-        super(message, cause);
+        super(message);
     }
 }
