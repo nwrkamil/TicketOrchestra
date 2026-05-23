@@ -7,6 +7,7 @@ import org.springframework.stereotype.Repository;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbTable;
 import software.amazon.awssdk.enhanced.dynamodb.TableSchema;
+import software.amazon.awssdk.enhanced.dynamodb.model.QueryConditional;
 
 import java.util.Optional;
 
@@ -26,9 +27,10 @@ public class DynamoDbPaymentRepository implements PaymentRepository {
 
     @Override
     public Optional<Payment> findByReservationId(ReservationId reservationId) {
-        // Simple scan for demo purposes, in production use GSI
-        return table.scan().items().stream()
-                .filter(p -> p.getReservationId().equals(reservationId.id()))
+        return table.index("ReservationIndex")
+                .query(QueryConditional.keyEqualTo(k -> k.partitionValue(reservationId.toString())))
+                .stream()
+                .flatMap(page -> page.items().stream())
                 .findFirst();
     }
 }

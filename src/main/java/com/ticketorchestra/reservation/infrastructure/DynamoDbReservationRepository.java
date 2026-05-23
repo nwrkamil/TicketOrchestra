@@ -29,6 +29,6 @@ public class DynamoDbReservationRepository implements ReservationRepository {
 
     @Override
     public Optional<Reservation> findById(ReservationId reservationId) {
-        return Optional.ofNullable(reservationTable.getItem(r -> r.key(k -> k.partitionValue(reservationId.id().toString()))));
+        return Optional.ofNullable(reservationTable.getItem(r -> r.key(k -> k.partitionValue(reservationId.toString()))));
     }
 }

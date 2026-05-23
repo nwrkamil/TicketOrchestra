@@ -23,7 +23,7 @@ public class ReservationController {
     }
 
     @PostMapping
-    public Reservation create(@RequestBody Reservation reservation) {
-        return service.createReservation(reservation);
+    public Reservation create(@RequestBody CreateReservationRequest request) {
+        return service.createReservation(request);
     }
 }

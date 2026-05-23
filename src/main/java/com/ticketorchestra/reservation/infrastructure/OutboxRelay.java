@@ -59,8 +59,8 @@ public class OutboxRelay {
 
         try {
             ReservationCreatedEvent payload = new ReservationCreatedEvent(
-                    event.getEventId(),
-                    UUID.fromString(event.getAggregateId())
+                    event.getEventId().id(),
+                    event.getAggregateId().id()
             );
 
             messagingGateway.sendToReservationEvents(payload, "RESERVATION_CREATED");

@@ -2,6 +2,7 @@ package com.ticketorchestra.reservation.infrastructure;
 
 import com.ticketorchestra.BaseIntegrationTest;
 import com.ticketorchestra.common.id.IntegrationEventId;
+import com.ticketorchestra.common.id.ReservationId;
 import com.ticketorchestra.reservation.domain.OutboxEvent;
 import com.ticketorchestra.reservation.domain.OutboxStatus;
 import lombok.extern.slf4j.Slf4j;
@@ -33,7 +34,7 @@ class OutboxRelayTest extends BaseIntegrationTest {
         DynamoDbTable<OutboxEvent> table = enhancedClient.table("Outbox", TableSchema.fromBean(OutboxEvent.class));
         IntegrationEventId eventId = IntegrationEventId.random();
         UUID reservationId = UUID.randomUUID();
-        OutboxEvent event = new OutboxEvent(eventId, reservationId.toString(), "TYPE", "{}");
+        OutboxEvent event = new OutboxEvent(eventId, new ReservationId(reservationId), "TYPE", "{}");
         table.putItem(event);
 
         // Manually trigger or wait for scheduler
@@ -43,6 +44,8 @@ class OutboxRelayTest extends BaseIntegrationTest {
             OutboxEvent processed = table.getItem(k -> k.key(Key.builder().partitionValue(eventId.id().toString()).build()));
             if (processed != null) {
                 log.info("Current event status: {}", processed.getStatus());
+            } else {
+                log.warn("Event not found in table");
             }
             assertEquals(OutboxStatus.SENT, processed != null ? processed.getStatus() : null);
         });
@@ -53,7 +56,7 @@ class OutboxRelayTest extends BaseIntegrationTest {
         DynamoDbTable<OutboxEvent> table = enhancedClient.table("Outbox", TableSchema.fromBean(OutboxEvent.class));
         IntegrationEventId eventId = IntegrationEventId.random();
         UUID reservationId = UUID.randomUUID();
-        OutboxEvent event = new OutboxEvent(eventId, reservationId.toString(), "FAIL", "{}");
+        OutboxEvent event = new OutboxEvent(eventId, new ReservationId(reservationId), "FAIL", "{}");
         event.setStatus(OutboxStatus.FAILED);
         event.setRetryCount(1);
         event.setNextRetryAt(Instant.now().minusSeconds(1)); // Should be eligible for retry

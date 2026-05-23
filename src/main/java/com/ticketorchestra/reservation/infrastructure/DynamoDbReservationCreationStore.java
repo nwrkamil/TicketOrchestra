@@ -16,7 +16,6 @@ import software.amazon.awssdk.services.dynamodb.model.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 @Repository
 public class DynamoDbReservationCreationStore implements ReservationCreationStore {
@@ -40,12 +39,12 @@ public class DynamoDbReservationCreationStore implements ReservationCreationStor
     @Override
     public void createWithSeatLocks(Reservation reservation, OutboxEvent outboxEvent) {
         List<TransactWriteItem> items = new ArrayList<>();
-        EventId eventId = new EventId(reservation.getEventId());
-        ReservationId reservationId = new ReservationId(reservation.getReservationId());
+        EventId eventId = reservation.getEventId();
+        ReservationId reservationId = reservation.getReservationId();
 
-        for (UUID seatId : reservation.getSeatIds()) {
+        for (SeatId seatId : reservation.getSeatIds()) {
             items.add(TransactWriteItem.builder()
-                    .update(lockSeatUpdate(eventId, new SeatId(seatId), reservationId))
+                    .update(lockSeatUpdate(eventId, seatId, reservationId))
                     .build());
         }
 
