@@ -11,6 +11,7 @@ public interface InventoryRepository {
     void saveSeat(Seat seat);
     boolean unlockSeatIfOwned(EventId eventId, SeatId seatId, ReservationId lockOwner);
     Optional<Seat> findSeat(EventId eventId, SeatId seatId);
+    List<Seat> findSeatsByEventId(EventId eventId);
     void saveEvent(Event event);
     Optional<Event> findEvent(EventId eventId);
     List<Event> findAllEvents();

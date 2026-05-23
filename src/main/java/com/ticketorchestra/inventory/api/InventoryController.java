@@ -56,13 +56,17 @@ public class InventoryController {
     }
 
     @GetMapping("/events/{eventId}")
-    public Event getEvent(@PathVariable EventId eventId) {
-        return repository.findEvent(eventId).orElseThrow();
+    public EventResponse getEvent(@PathVariable EventId eventId) {
+        Event event = repository.findEvent(eventId).orElseThrow();
+        List<Seat> seats = repository.findSeatsByEventId(eventId);
+        return EventResponse.from(event, seats);
     }
 
     @GetMapping("/events")
-    public List<Event> getEvents() {
-        return repository.findAllEvents();
+    public List<EventResponse> getEvents() {
+        return repository.findAllEvents().stream()
+                .map(event -> EventResponse.from(event, List.of()))
+                .toList();
     }
 
     @GetMapping("/events/{eventId}/seats/{seatId}")

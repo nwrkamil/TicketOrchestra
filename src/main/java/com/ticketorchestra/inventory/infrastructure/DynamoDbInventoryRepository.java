@@ -74,6 +74,17 @@ public class DynamoDbInventoryRepository implements InventoryRepository {
     }
 
     @Override
+    public List<Seat> findSeatsByEventId(EventId eventId) {
+        return seatTable.query(r -> r.queryConditional(
+                software.amazon.awssdk.enhanced.dynamodb.model.QueryConditional.keyEqualTo(Key.builder()
+                        .partitionValue(eventId.id().toString())
+                        .build())))
+                .items()
+                .stream()
+                .toList();
+    }
+
+    @Override
     public void saveEvent(Event event) {
         eventTable.putItem(event);
     }
