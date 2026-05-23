@@ -1,5 +1,6 @@
 package com.ticketorchestra.reservation.domain;
 
+import com.ticketorchestra.common.api.AntiFraudException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ticketorchestra.common.id.EventId;
 import com.ticketorchestra.common.id.ReservationId;
@@ -48,7 +49,7 @@ public class ReservationService {
         CompletableFuture.allOf(antiFraudCheck, pricing).join();
 
         if (!antiFraudCheck.join()) {
-            throw new RuntimeException("Anti-fraud check failed");
+            throw new AntiFraudException("Anti-fraud check failed for user: " + reservation.getUserId());
         }
 
         reservation.setTotalPrice(pricing.join());

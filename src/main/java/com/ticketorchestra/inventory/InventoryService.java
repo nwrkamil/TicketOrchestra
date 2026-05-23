@@ -1,5 +1,6 @@
 package com.ticketorchestra.inventory;
 
+import com.ticketorchestra.common.api.ResourceNotFoundException;
 import com.ticketorchestra.common.id.EventId;
 import com.ticketorchestra.common.id.ReservationId;
 import com.ticketorchestra.common.id.SeatId;
@@ -18,13 +19,13 @@ public class InventoryService {
 
     public void verifyEventAndSeats(EventId eventId, List<SeatId> seatIds) {
         if (repository.findEvent(eventId).isEmpty()) {
-            throw new RuntimeException("Event not found");
+            throw new ResourceNotFoundException("Event not found");
         }
         for (SeatId seatId : seatIds) {
             Seat seat = repository.findSeat(eventId, seatId)
-                    .orElseThrow(() -> new RuntimeException("Seat " + seatId + " not found for event " + eventId));
+                    .orElseThrow(() -> new ResourceNotFoundException("Seat " + seatId + " not found for event " + eventId));
             if (!Objects.equals(seat.getEventId(), eventId.id())) {
-                throw new RuntimeException("Seat " + seatId + " does not belong to event " + eventId);
+                throw new ResourceNotFoundException("Seat " + seatId + " does not belong to event " + eventId);
             }
         }
     }

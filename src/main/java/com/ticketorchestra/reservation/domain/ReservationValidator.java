@@ -1,5 +1,6 @@
 package com.ticketorchestra.reservation.domain;
 
+import com.ticketorchestra.common.api.ValidationException;
 import com.ticketorchestra.common.id.EventId;
 import com.ticketorchestra.common.id.SeatId;
 import lombok.RequiredArgsConstructor;
@@ -24,13 +25,13 @@ public class ReservationValidator {
 
     private void validateSeatLimit(List<SeatId> seatIds) {
         if (seatIds == null || seatIds.isEmpty()) {
-            throw new RuntimeException("At least one seat is required");
+            throw new ValidationException("At least one seat is required");
         }
         if (seatIds.size() > maxSeatsPerReservation) {
-            throw new RuntimeException("Too many seats in one reservation");
+            throw new ValidationException("Too many seats in one reservation (max: " + maxSeatsPerReservation + ")");
         }
         if (new HashSet<>(seatIds).size() != seatIds.size()) {
-            throw new RuntimeException("Duplicate seats are not allowed");
+            throw new ValidationException("Duplicate seats are not allowed");
         }
     }
 }
