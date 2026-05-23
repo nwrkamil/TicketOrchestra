@@ -23,12 +23,7 @@ public class Event {
      * Information about the venue is flattened into Events and Seats for simplicity.
      */
     private UUID venueId;
-    private EventStatus status;
 
     @DynamoDbPartitionKey
     public UUID getEventId() { return eventId; }
-
-    public enum EventStatus {
-        DRAFT, PUBLISHED, CANCELLED
-    }
 }

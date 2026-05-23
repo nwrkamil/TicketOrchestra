@@ -19,6 +19,7 @@ import software.amazon.awssdk.services.dynamodb.model.UpdateItemRequest;
 
 import java.util.Map;
 import java.util.Optional;
+import java.util.List;
 
 @Repository
 public class DynamoDbInventoryRepository implements InventoryRepository {
@@ -73,6 +74,17 @@ public class DynamoDbInventoryRepository implements InventoryRepository {
     }
 
     @Override
+    public List<Seat> findSeatsByEventId(EventId eventId) {
+        return seatTable.query(r -> r.queryConditional(
+                software.amazon.awssdk.enhanced.dynamodb.model.QueryConditional.keyEqualTo(Key.builder()
+                        .partitionValue(eventId.id().toString())
+                        .build())))
+                .items()
+                .stream()
+                .toList();
+    }
+
+    @Override
     public void saveEvent(Event event) {
         eventTable.putItem(event);
     }
@@ -82,6 +94,11 @@ public class DynamoDbInventoryRepository implements InventoryRepository {
         return Optional.ofNullable(eventTable.getItem(Key.builder()
                 .partitionValue(eventId.id().toString())
                 .build()));
+    }
+
+    @Override
+    public List<Event> findAllEvents() {
+        return eventTable.scan().items().stream().toList();
     }
 
     private AttributeValue stringValue(String value) {
