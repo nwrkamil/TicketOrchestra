@@ -22,3 +22,9 @@ management:
     tags:
       application: ticketorchestra
       environment: local
+
+com:
+  amazonaws:
+    xray:
+      enabled: false
+      context-missing: IGNORE_ERROR

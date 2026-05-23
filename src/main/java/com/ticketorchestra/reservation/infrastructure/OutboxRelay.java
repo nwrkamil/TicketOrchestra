@@ -1,7 +1,9 @@
 package com.ticketorchestra.reservation.infrastructure;
 
+import com.amazonaws.xray.entities.Subsegment;
 import com.ticketorchestra.common.messaging.MessagingGateway;
 import com.ticketorchestra.common.messaging.ReservationCreatedEvent;
+import com.ticketorchestra.common.tracing.TracingHelper;
 import com.ticketorchestra.reservation.domain.OutboxEvent;
 import com.ticketorchestra.reservation.domain.OutboxStatus;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -74,7 +76,12 @@ public class OutboxRelay {
     }
 
     private void processEvent(OutboxEvent event) {
+        Subsegment subsegment = TracingHelper.beginSubsegment("RelayOutboxEvent");
+        TracingHelper.putAnnotation(subsegment, "eventId", event.getEventId().toString());
+        TracingHelper.putAnnotation(subsegment, "status", event.getStatus().name());
+        
         if (!claimEvent(event)) {
+            TracingHelper.endSubsegment(subsegment);
             return;
         }
 
@@ -91,9 +98,12 @@ public class OutboxRelay {
             event.setLeaseExpiresAt(null);
             getOutboxTable().updateItem(event);
             
+            TracingHelper.putAnnotation(subsegment, "result", "success");
             meterRegistry.counter("outbox.events.processed", "status", "SENT").increment();
             log.info("Successfully relayed event: {}", event.getEventId());
         } catch (Exception e) {
+            TracingHelper.addException(subsegment, e);
+            TracingHelper.putAnnotation(subsegment, "result", "failed");
             log.error("Error during relay of event {}: {}", event.getEventId(), e.getMessage());
             event.setStatus(OutboxStatus.FAILED);
             event.setRetryCount(event.getRetryCount() + 1);
@@ -104,6 +114,8 @@ public class OutboxRelay {
             getOutboxTable().updateItem(event);
             
             meterRegistry.counter("outbox.events.processed", "status", "FAILED").increment();
+        } finally {
+            TracingHelper.endSubsegment(subsegment);
         }
     }
 

@@ -1,9 +1,11 @@
 package com.ticketorchestra.reservation.domain;
 
+import com.amazonaws.xray.entities.Subsegment;
 import com.ticketorchestra.common.api.AntiFraudException;
 import com.ticketorchestra.common.id.EventId;
 import com.ticketorchestra.common.id.ReservationId;
 import com.ticketorchestra.common.id.SeatId;
+import com.ticketorchestra.common.tracing.TracingHelper;
 import com.ticketorchestra.inventory.InventoryService;
 import com.ticketorchestra.reservation.api.CreateReservationRequest;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -34,20 +36,28 @@ public class ReservationService {
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
 
     public Reservation createReservation(CreateReservationRequest request) {
+        Subsegment subsegment = TracingHelper.beginSubsegment("CreateReservation");
         Timer.Sample sample = Timer.start(meterRegistry);
         try {
             EventId eventId = new EventId(request.eventId());
             List<SeatId> seatIds = seatIdsFrom(request);
+            
+            TracingHelper.putMetadata(subsegment, "reservation", "userId", request.userId());
+            TracingHelper.putMetadata(subsegment, "reservation", "eventId", request.eventId());
+            TracingHelper.putMetadata(subsegment, "reservation", "seatCount", seatIds.size());
+            
             reservationValidator.validate(eventId, seatIds);
 
             Reservation reservation = Reservation.createPending(request.userId(), eventId, seatIds);
             ReservationId reservationId = reservation.getReservationId();
 
-            var antiFraudCheck = CompletableFuture.supplyAsync(
-                    () -> antiFraudService.check(reservation.getUserId()), executor);
+            var antiFraudCheck = CompletableFuture.supplyAsync(() ->
+                    TracingHelper.trace("AntiFraudCheck", () ->
+                            antiFraudService.check(reservation.getUserId())), executor);
             
-            var pricing = CompletableFuture.supplyAsync(
-                    () -> pricingService.calculateTotal(eventId, seatIds), executor);
+            var pricing = CompletableFuture.supplyAsync(() ->
+                    TracingHelper.trace("PricingCalculation", () ->
+                            pricingService.calculateTotal(eventId, seatIds)), executor);
 
             CompletableFuture.allOf(antiFraudCheck, pricing).join();
 
@@ -61,14 +71,20 @@ public class ReservationService {
 
             reservationCreationStore.createWithSeatLocks(reservation, outboxEvent);
             
+            TracingHelper.putAnnotation(subsegment, "reservationId", reservationId.toString());
+            TracingHelper.putAnnotation(subsegment, "status", "success");
+            
             meterRegistry.counter("reservation.created", "status", "success", "error", "none").increment();
             return reservation;
         } catch (Exception e) {
+            TracingHelper.addException(subsegment, e);
+            TracingHelper.putAnnotation(subsegment, "status", "failed");
             meterRegistry.counter("reservation.created", 
                 "status", "failed", 
                 "error", e.getClass().getSimpleName()).increment();
             throw e;
         } finally {
+            TracingHelper.endSubsegment(subsegment);
             sample.stop(Timer.builder("reservation.creation.duration")
                 .tag("status", "completed")
                 .register(meterRegistry));

@@ -28,6 +28,7 @@ dependencies {
     implementation 'org.springframework.modulith:spring-modulith-starter-core'
     implementation platform('io.awspring.cloud:spring-cloud-aws-dependencies:3.3.0')
     implementation 'io.awspring.cloud:spring-cloud-aws-starter-sqs'
+    implementation 'com.amazonaws:aws-xray-recorder-sdk-spring:2.18.2'
     implementation platform('software.amazon.awssdk:bom:2.30.0')
     implementation 'software.amazon.awssdk:dynamodb'
     implementation 'software.amazon.awssdk:dynamodb-enhanced'
