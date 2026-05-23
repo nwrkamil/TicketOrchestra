@@ -24,36 +24,32 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ReservationService {
-    
     private final ReservationRepository repository;
     private final ReservationCreationStore reservationCreationStore;
     private final InventoryService inventoryService;
+    private final OutboxEventService outboxEventService;
+    private final ReservationValidator reservationValidator;
     private final AntiFraudService antiFraudService;
     private final PricingService pricingService;
     @SuppressFBWarnings("EI2")
     private final ObjectMapper objectMapper;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
 
-    @Value("${ticketorchestra.reservations.max-seats:6}")
-    private int maxSeatsPerReservation;
-
     public Reservation createReservation(CreateReservationRequest request) {
-        Reservation reservation = new Reservation();
-        reservation.setUserId(request.userId());
-        reservation.setEventId(request.eventId());
-        reservation.setSeatIds(request.seatIds());
+        EventId eventId = new EventId(request.eventId());
+        List<SeatId> seatIds = seatIdsFrom(request);
+        reservationValidator.validate(eventId, seatIds);
 
-        List<SeatId> seatIds = seatIdsFrom(reservation);
-        validateSeatLimit(seatIds);
-
-        reservation.setReservationId(UUID.randomUUID());
-        reservation.setStatus(Reservation.ReservationStatus.PENDING);
-        reservation.setExpiresAt(Instant.now().plus(15, ChronoUnit.MINUTES));
-        EventId eventId = new EventId(reservation.getEventId());
+        Reservation reservation = Reservation.createPending(request.userId(), request.eventId(), request.seatIds());
         ReservationId reservationId = new ReservationId(reservation.getReservationId());
 
         var antiFraudCheck = CompletableFuture.supplyAsync(
@@ -70,45 +66,19 @@ public class ReservationService {
 
         reservation.setTotalPrice(pricing.join());
 
-        IntegrationEventId outboxEventId = IntegrationEventId.random();
-        OutboxEvent outboxEvent = new OutboxEvent(
-                outboxEventId,
-                reservation.getReservationId().toString(),
-                "RESERVATION_CREATED",
-                toPayload(IntegrationEvent.forReservation(outboxEventId, reservationId))
-        );
+        OutboxEvent outboxEvent = outboxEventService.createReservationCreatedEvent(reservationId);
 
         reservationCreationStore.createWithSeatLocks(reservation, outboxEvent);
         return reservation;
     }
 
-    private List<SeatId> seatIdsFrom(Reservation reservation) {
-        if (reservation.getSeatIds() == null) {
+    private List<SeatId> seatIdsFrom(CreateReservationRequest reservation) {
+        if (reservation.seatIds() == null) {
             return List.of();
         }
-        return reservation.getSeatIds().stream()
+        return reservation.seatIds().stream()
                 .map(SeatId::new)
                 .toList();
-    }
-
-    private void validateSeatLimit(List<SeatId> seatIds) {
-        if (seatIds == null || seatIds.isEmpty()) {
-            throw new RuntimeException("At least one seat is required");
-        }
-        if (seatIds.size() > maxSeatsPerReservation) {
-            throw new RuntimeException("Too many seats in one reservation");
-        }
-        if (new HashSet<>(seatIds).size() != seatIds.size()) {
-            throw new RuntimeException("Duplicate seats are not allowed");
-        }
-    }
-
-    private String toPayload(IntegrationEvent event) {
-        try {
-            return objectMapper.writeValueAsString(event);
-        } catch (JsonProcessingException e) {
-            throw new IllegalStateException("Unable to serialize integration event", e);
-        }
     }
 
     public void confirmReservation(ReservationId reservationId) {

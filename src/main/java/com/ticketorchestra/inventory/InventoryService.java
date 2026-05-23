@@ -8,12 +8,26 @@ import com.ticketorchestra.inventory.domain.Seat;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
 public class InventoryService {
     private final InventoryRepository repository;
+
+    public void verifyEventAndSeats(EventId eventId, List<SeatId> seatIds) {
+        if (repository.findEvent(eventId).isEmpty()) {
+            throw new RuntimeException("Event not found");
+        }
+        for (SeatId seatId : seatIds) {
+            Seat seat = repository.findSeat(eventId, seatId)
+                    .orElseThrow(() -> new RuntimeException("Seat " + seatId + " not found for event " + eventId));
+            if (!Objects.equals(seat.getEventId(), eventId.id())) {
+                throw new RuntimeException("Seat " + seatId + " does not belong to event " + eventId);
+            }
+        }
+    }
 
     public void unlockSeat(EventId eventId, SeatId seatId, ReservationId lockOwner) {
         Seat seat = repository.findSeat(eventId, seatId)

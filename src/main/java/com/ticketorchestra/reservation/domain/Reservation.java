@@ -7,6 +7,7 @@ import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -16,6 +17,8 @@ import java.util.UUID;
 @NoArgsConstructor
 @DynamoDbBean
 public class Reservation {
+    //TODO move it to some configuration bean
+    public static final int AMOUNT_TO_ADD = 15;
     private UUID reservationId;
     /**
      * In a production system, userId would be extracted from a JWT token.
@@ -28,6 +31,16 @@ public class Reservation {
     private ReservationStatus status;
     private Instant expiresAt;
 
+    public static Reservation createPending(String userId, UUID eventId, List<UUID> seatIds) {
+        Reservation reservation = new Reservation();
+        reservation.setReservationId(UUID.randomUUID());
+        reservation.setUserId(userId);
+        reservation.setEventId(eventId);
+        reservation.setSeatIds(seatIds);
+        reservation.setStatus(ReservationStatus.PENDING);
+        reservation.setExpiresAt(Instant.now().plus(AMOUNT_TO_ADD, ChronoUnit.MINUTES));
+        return reservation;
+    }
 
     public List<UUID> getSeatIds() { return seatIds == null ? null : new ArrayList<>(seatIds); }
 

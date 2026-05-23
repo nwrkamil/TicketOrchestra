@@ -39,6 +39,10 @@ public class OutboxEvent {
         this.retryCount = 0;
     }
 
+    public static OutboxEvent forReservationCreated(IntegrationEventId eventId, UUID reservationId, String payload) {
+        return new OutboxEvent(eventId, reservationId.toString(), "RESERVATION_CREATED", payload);
+    }
+
     @DynamoDbPartitionKey
     public UUID getEventId() { return eventId; }
 

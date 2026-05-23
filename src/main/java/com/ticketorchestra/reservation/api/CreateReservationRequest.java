@@ -7,4 +7,8 @@ public record CreateReservationRequest(
         String userId,
         UUID eventId,
         List<UUID> seatIds
-) {}
+) {
+    public CreateReservationRequest {
+        seatIds = seatIds != null ? List.copyOf(seatIds) : List.of();
+    }
+}
