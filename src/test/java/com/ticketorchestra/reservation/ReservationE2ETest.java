@@ -71,7 +71,7 @@ public class ReservationE2ETest extends BaseIntegrationTest {
 
         // 2. Trigger Reservation
         String reservationId = given().contentType(ContentType.JSON)
-                .body("{\"userId\": \"test-user\", \"eventId\": \"" + eventId + "\", \"seatIds\": [\"" + seatId + "\"], \"totalPrice\": 0.0}")
+                .body("{\"userId\": \"test-user\", \"eventId\": \"" + eventId + "\", \"seatIds\": [\"" + seatId + "\"]}")
                 .post(baseUrl + "/v1/reservations")
                 .then().statusCode(200)
                 .extract().path("reservationId");
@@ -104,7 +104,7 @@ public class ReservationE2ETest extends BaseIntegrationTest {
 
         given().contentType(ContentType.JSON)
                 .body("{\"userId\": \"test-user\", \"eventId\": \"" + eventId + "\", \"seatIds\": [\""
-                        + availableSeatId + "\", \"" + unavailableSeatId + "\"], \"totalPrice\": 0.0}")
+                        + availableSeatId + "\", \"" + unavailableSeatId + "\"]}")
                 .post(baseUrl + "/v1/reservations")
                 .then().statusCode(500);
 
@@ -123,7 +123,7 @@ public class ReservationE2ETest extends BaseIntegrationTest {
 
         given().contentType(ContentType.JSON)
                 .body("{\"userId\": \"fraud-user\", \"eventId\": \"" + eventId + "\", \"seatIds\": [\""
-                        + seatId + "\"], \"totalPrice\": 0.0}")
+                        + seatId + "\"]}")
                 .post(baseUrl + "/v1/reservations")
                 .then().statusCode(500);
 

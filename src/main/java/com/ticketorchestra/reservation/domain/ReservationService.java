@@ -8,6 +8,7 @@ import com.ticketorchestra.common.id.ReservationId;
 import com.ticketorchestra.common.id.SeatId;
 import com.ticketorchestra.common.messaging.IntegrationEvent;
 import com.ticketorchestra.inventory.InventoryService;
+import com.ticketorchestra.reservation.api.CreateReservationRequest;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -40,7 +41,12 @@ public class ReservationService {
     @Value("${ticketorchestra.reservations.max-seats:6}")
     private int maxSeatsPerReservation;
 
-    public Reservation createReservation(Reservation reservation) {
+    public Reservation createReservation(CreateReservationRequest request) {
+        Reservation reservation = new Reservation();
+        reservation.setUserId(request.userId());
+        reservation.setEventId(request.eventId());
+        reservation.setSeatIds(request.seatIds());
+
         List<SeatId> seatIds = seatIdsFrom(reservation);
         validateSeatLimit(seatIds);
 
