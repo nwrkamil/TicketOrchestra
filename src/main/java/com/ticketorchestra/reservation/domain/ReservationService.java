@@ -1,33 +1,20 @@
 package com.ticketorchestra.reservation.domain;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ticketorchestra.common.id.EventId;
-import com.ticketorchestra.common.id.IntegrationEventId;
 import com.ticketorchestra.common.id.ReservationId;
 import com.ticketorchestra.common.id.SeatId;
-import com.ticketorchestra.common.messaging.IntegrationEvent;
 import com.ticketorchestra.inventory.InventoryService;
 import com.ticketorchestra.reservation.api.CreateReservationRequest;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.HashSet;
 import java.util.List;
-import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 @Slf4j
 @Service
@@ -49,8 +36,8 @@ public class ReservationService {
         List<SeatId> seatIds = seatIdsFrom(request);
         reservationValidator.validate(eventId, seatIds);
 
-        Reservation reservation = Reservation.createPending(request.userId(), request.eventId(), request.seatIds());
-        ReservationId reservationId = new ReservationId(reservation.getReservationId());
+        Reservation reservation = Reservation.createPending(request.userId(), eventId, seatIds);
+        ReservationId reservationId = reservation.getReservationId();
 
         var antiFraudCheck = CompletableFuture.supplyAsync(
                 () -> antiFraudService.check(reservation.getUserId()), executor);
@@ -100,9 +87,8 @@ public class ReservationService {
 
         reservation.setStatus(Reservation.ReservationStatus.PAID);
         repository.save(reservation);
-        EventId eventId = new EventId(reservation.getEventId());
         reservation.getSeatIds().forEach(seatId ->
-                inventoryService.sellSeat(eventId, new SeatId(seatId), reservationId));
+                inventoryService.sellSeat(reservation.getEventId(), seatId, reservationId));
         log.info("Reservation confirmed: {}", reservationId);
     }
 
@@ -127,9 +113,8 @@ public class ReservationService {
         repository.save(reservation);
         
         // Compensating action: unlock seats
-        EventId eventId = new EventId(reservation.getEventId());
         reservation.getSeatIds().forEach(seatId -> 
-                inventoryService.unlockSeat(eventId, new SeatId(seatId), reservationId));
+                inventoryService.unlockSeat(reservation.getEventId(), seatId, reservationId));
         
         log.info("Reservation cancelled and seats unlocked: {}", reservationId);
     }

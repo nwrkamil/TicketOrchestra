@@ -5,15 +5,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ticketorchestra.common.id.IntegrationEventId;
 import com.ticketorchestra.common.id.ReservationId;
 import com.ticketorchestra.common.messaging.IntegrationEvent;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class OutboxEventService {
+    @SuppressFBWarnings("EI2")
     private final ObjectMapper objectMapper;
+
 
     public OutboxEvent createReservationCreatedEvent(ReservationId reservationId) {
         IntegrationEventId eventId = IntegrationEventId.random();
@@ -21,7 +22,7 @@ public class OutboxEventService {
         
         return OutboxEvent.forReservationCreated(
                 eventId,
-                reservationId.id(),
+                reservationId,
                 toPayload(event)
         );
     }

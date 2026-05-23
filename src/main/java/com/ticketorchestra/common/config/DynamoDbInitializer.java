@@ -100,6 +100,24 @@ public class DynamoDbInitializer {
         }
 
         createTable("Payments", "paymentId", null);
+        // We need to re-create it with GSI
+        log.info("Updating Payments table for reservationId GSI...");
+        dynamoDbClient.deleteTable(DeleteTableRequest.builder().tableName("Payments").build());
+        try { Thread.sleep(2000); } catch (InterruptedException ignored) {}
+        dynamoDbClient.createTable(CreateTableRequest.builder()
+                .tableName("Payments")
+                .attributeDefinitions(
+                        AttributeDefinition.builder().attributeName("paymentId").attributeType(ScalarAttributeType.S).build(),
+                        AttributeDefinition.builder().attributeName("reservationId").attributeType(ScalarAttributeType.S).build()
+                )
+                .keySchema(KeySchemaElement.builder().attributeName("paymentId").keyType(KeyType.HASH).build())
+                .billingMode(BillingMode.PAY_PER_REQUEST)
+                .globalSecondaryIndexes(GlobalSecondaryIndex.builder()
+                        .indexName("ReservationIndex")
+                        .keySchema(KeySchemaElement.builder().attributeName("reservationId").keyType(KeyType.HASH).build())
+                        .projection(Projection.builder().projectionType(ProjectionType.ALL).build())
+                        .build())
+                .build());
     }
 
     private void createOutboxTable() {

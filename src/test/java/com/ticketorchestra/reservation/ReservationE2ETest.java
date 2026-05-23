@@ -74,7 +74,7 @@ public class ReservationE2ETest extends BaseIntegrationTest {
                 .body("{\"userId\": \"test-user\", \"eventId\": \"" + eventId + "\", \"seatIds\": [\"" + seatId + "\"]}")
                 .post(baseUrl + "/v1/reservations")
                 .then().statusCode(200)
-                .extract().path("reservationId");
+                .extract().path("reservationId.id");
 
         // 3. Wait for Saga to process
         await().atMost(15, TimeUnit.SECONDS).untilAsserted(() -> {
@@ -222,10 +222,10 @@ public class ReservationE2ETest extends BaseIntegrationTest {
                                  SeatId seatId,
                                  Reservation.ReservationStatus status) {
         Reservation reservation = new Reservation();
-        reservation.setReservationId(reservationId.id());
+        reservation.setReservationId(reservationId);
         reservation.setUserId("test-user");
-        reservation.setEventId(eventId.id());
-        reservation.setSeatIds(List.of(seatId.id()));
+        reservation.setEventId(eventId);
+        reservation.setSeatIds(List.of(seatId));
         reservation.setTotalPrice(100.0);
         reservation.setStatus(status);
         reservation.setExpiresAt(Instant.now().plusSeconds(900));
