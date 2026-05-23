@@ -4,6 +4,10 @@ import com.ticketorchestra.common.messaging.MessagingGateway;
 import com.ticketorchestra.common.messaging.ReservationCreatedEvent;
 import com.ticketorchestra.reservation.domain.OutboxEvent;
 import com.ticketorchestra.reservation.domain.OutboxStatus;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -18,6 +22,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 
 @Slf4j
 @Component
@@ -26,9 +31,18 @@ public class OutboxRelay {
 
     private final DynamoDbEnhancedClient enhancedClient;
     private final MessagingGateway messagingGateway;
+    @SuppressFBWarnings(value = "EI_EXPOSE_REP2", justification = "MeterRegistry is a shared Spring bean")
+    private final MeterRegistry meterRegistry;
     
     private final String instanceId = UUID.randomUUID().toString();
     private static final int LEASE_SECONDS = 30;
+    private final AtomicLong pendingEventsCount = new AtomicLong(0);
+
+    @PostConstruct
+    public void init() {
+        Gauge.builder("outbox.pending.events", pendingEventsCount, AtomicLong::get)
+            .register(meterRegistry);
+    }
 
     @Scheduled(fixedDelay = 5000)
     public void relayEvents() {
@@ -36,15 +50,22 @@ public class OutboxRelay {
             DynamoDbTable<OutboxEvent> table = getOutboxTable();
             DynamoDbIndex<OutboxEvent> statusIndex = table.index("StatusIndex");
 
+            long pendingCount = 0;
             for (OutboxStatus status : List.of(OutboxStatus.NEW, OutboxStatus.FAILED)) {
-                statusIndex.query(QueryEnhancedRequest.builder()
+                List<OutboxEvent> events = statusIndex.query(QueryEnhancedRequest.builder()
                         .queryConditional(QueryConditional.keyEqualTo(k -> k.partitionValue(status.name())))
                         .build())
                         .stream()
                         .flatMap(page -> page.items().stream())
                         .filter(e -> e.getNextRetryAt() == null || e.getNextRetryAt().isBefore(Instant.now()))
-                        .forEach(this::processEvent);
+                        .toList();
+                
+                pendingCount += events.size();
+                events.forEach(this::processEvent);
             }
+            
+            pendingEventsCount.set(pendingCount);
+                
         } catch (ResourceNotFoundException e) {
             log.debug("Outbox table not yet initialized");
         } catch (Exception e) {
@@ -69,6 +90,8 @@ public class OutboxRelay {
             event.setLeaseOwner(null);
             event.setLeaseExpiresAt(null);
             getOutboxTable().updateItem(event);
+            
+            meterRegistry.counter("outbox.events.processed", "status", "SENT").increment();
             log.info("Successfully relayed event: {}", event.getEventId());
         } catch (Exception e) {
             log.error("Error during relay of event {}: {}", event.getEventId(), e.getMessage());
@@ -79,6 +102,8 @@ public class OutboxRelay {
             event.setLeaseOwner(null);
             event.setLeaseExpiresAt(null);
             getOutboxTable().updateItem(event);
+            
+            meterRegistry.counter("outbox.events.processed", "status", "FAILED").increment();
         }
     }
 
