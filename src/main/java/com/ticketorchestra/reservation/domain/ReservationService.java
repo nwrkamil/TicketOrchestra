@@ -6,6 +6,9 @@ import com.ticketorchestra.common.id.ReservationId;
 import com.ticketorchestra.common.id.SeatId;
 import com.ticketorchestra.inventory.InventoryService;
 import com.ticketorchestra.reservation.api.CreateReservationRequest;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -26,34 +29,50 @@ public class ReservationService {
     private final ReservationValidator reservationValidator;
     private final AntiFraudService antiFraudService;
     private final PricingService pricingService;
+    @SuppressFBWarnings(value = "EI_EXPOSE_REP2", justification = "MeterRegistry is a shared Spring bean")
+    private final MeterRegistry meterRegistry;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
 
     public Reservation createReservation(CreateReservationRequest request) {
-        EventId eventId = new EventId(request.eventId());
-        List<SeatId> seatIds = seatIdsFrom(request);
-        reservationValidator.validate(eventId, seatIds);
+        Timer.Sample sample = Timer.start(meterRegistry);
+        try {
+            EventId eventId = new EventId(request.eventId());
+            List<SeatId> seatIds = seatIdsFrom(request);
+            reservationValidator.validate(eventId, seatIds);
 
-        Reservation reservation = Reservation.createPending(request.userId(), eventId, seatIds);
-        ReservationId reservationId = reservation.getReservationId();
+            Reservation reservation = Reservation.createPending(request.userId(), eventId, seatIds);
+            ReservationId reservationId = reservation.getReservationId();
 
-        var antiFraudCheck = CompletableFuture.supplyAsync(
-                () -> antiFraudService.check(reservation.getUserId()), executor);
-        
-        var pricing = CompletableFuture.supplyAsync(
-                () -> pricingService.calculateTotal(eventId, seatIds), executor);
+            var antiFraudCheck = CompletableFuture.supplyAsync(
+                    () -> antiFraudService.check(reservation.getUserId()), executor);
+            
+            var pricing = CompletableFuture.supplyAsync(
+                    () -> pricingService.calculateTotal(eventId, seatIds), executor);
 
-        CompletableFuture.allOf(antiFraudCheck, pricing).join();
+            CompletableFuture.allOf(antiFraudCheck, pricing).join();
 
-        if (!antiFraudCheck.join()) {
-            throw new AntiFraudException("Anti-fraud check failed for user: " + reservation.getUserId());
+            if (!antiFraudCheck.join()) {
+                throw new AntiFraudException("Anti-fraud check failed for user: " + reservation.getUserId());
+            }
+
+            reservation.setTotalPrice(pricing.join());
+
+            OutboxEvent outboxEvent = outboxEventService.createReservationCreatedEvent(reservationId);
+
+            reservationCreationStore.createWithSeatLocks(reservation, outboxEvent);
+            
+            meterRegistry.counter("reservation.created", "status", "success", "error", "none").increment();
+            return reservation;
+        } catch (Exception e) {
+            meterRegistry.counter("reservation.created", 
+                "status", "failed", 
+                "error", e.getClass().getSimpleName()).increment();
+            throw e;
+        } finally {
+            sample.stop(Timer.builder("reservation.creation.duration")
+                .tag("status", "completed")
+                .register(meterRegistry));
         }
-
-        reservation.setTotalPrice(pricing.join());
-
-        OutboxEvent outboxEvent = outboxEventService.createReservationCreatedEvent(reservationId);
-
-        reservationCreationStore.createWithSeatLocks(reservation, outboxEvent);
-        return reservation;
     }
 
     private List<SeatId> seatIdsFrom(CreateReservationRequest reservation) {
