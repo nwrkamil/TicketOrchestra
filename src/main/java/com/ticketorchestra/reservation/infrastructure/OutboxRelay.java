@@ -1,14 +1,14 @@
 package com.ticketorchestra.reservation.infrastructure;
 
-import com.amazonaws.xray.entities.Subsegment;
 import com.ticketorchestra.common.messaging.MessagingGateway;
 import com.ticketorchestra.common.messaging.ReservationCreatedEvent;
-import com.ticketorchestra.common.tracing.TracingHelper;
 import com.ticketorchestra.reservation.domain.OutboxEvent;
 import com.ticketorchestra.reservation.domain.OutboxStatus;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationRegistry;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +33,8 @@ public class OutboxRelay {
 
     private final DynamoDbEnhancedClient enhancedClient;
     private final MessagingGateway messagingGateway;
+    @SuppressFBWarnings(value = "EI_EXPOSE_REP2", justification = "ObservationRegistry is a shared Spring bean")
+    private final ObservationRegistry observationRegistry;
     @SuppressFBWarnings(value = "EI_EXPOSE_REP2", justification = "MeterRegistry is a shared Spring bean")
     private final MeterRegistry meterRegistry;
     
@@ -76,47 +78,41 @@ public class OutboxRelay {
     }
 
     private void processEvent(OutboxEvent event) {
-        Subsegment subsegment = TracingHelper.beginSubsegment("RelayOutboxEvent");
-        TracingHelper.putAnnotation(subsegment, "eventId", event.getEventId().toString());
-        TracingHelper.putAnnotation(subsegment, "status", event.getStatus().name());
-        
-        if (!claimEvent(event)) {
-            TracingHelper.endSubsegment(subsegment);
-            return;
-        }
+        Observation.createNotStarted("outbox.relay", observationRegistry)
+                .lowCardinalityKeyValue("outbox.eventId", event.getEventId().toString())
+                .observe(() -> {
+                    if (!claimEvent(event)) {
+                        return;
+                    }
 
-        try {
-            ReservationCreatedEvent payload = new ReservationCreatedEvent(
-                    event.getEventId().id(),
-                    event.getAggregateId().id()
-            );
+                    try {
+                        ReservationCreatedEvent payload = new ReservationCreatedEvent(
+                                event.getEventId().id(),
+                                event.getAggregateId().id()
+                        );
 
-            messagingGateway.sendToReservationEvents(payload, "RESERVATION_CREATED");
+                        messagingGateway.sendToReservationEvents(payload, "RESERVATION_CREATED");
 
-            event.setStatus(OutboxStatus.SENT);
-            event.setLeaseOwner(null);
-            event.setLeaseExpiresAt(null);
-            getOutboxTable().updateItem(event);
-            
-            TracingHelper.putAnnotation(subsegment, "result", "success");
-            meterRegistry.counter("outbox.events.processed", "status", "SENT").increment();
-            log.info("Successfully relayed event: {}", event.getEventId());
-        } catch (Exception e) {
-            TracingHelper.addException(subsegment, e);
-            TracingHelper.putAnnotation(subsegment, "result", "failed");
-            log.error("Error during relay of event {}: {}", event.getEventId(), e.getMessage());
-            event.setStatus(OutboxStatus.FAILED);
-            event.setRetryCount(event.getRetryCount() + 1);
-            event.setLastErrorMessage(e.getMessage());
-            event.setNextRetryAt(Instant.now().plusSeconds(30L * event.getRetryCount()));
-            event.setLeaseOwner(null);
-            event.setLeaseExpiresAt(null);
-            getOutboxTable().updateItem(event);
-            
-            meterRegistry.counter("outbox.events.processed", "status", "FAILED").increment();
-        } finally {
-            TracingHelper.endSubsegment(subsegment);
-        }
+                        event.setStatus(OutboxStatus.SENT);
+                        event.setLeaseOwner(null);
+                        event.setLeaseExpiresAt(null);
+                        getOutboxTable().updateItem(event);
+
+                        meterRegistry.counter("outbox.events.processed", "status", "SENT").increment();
+                        log.info("Successfully relayed event: {}", event.getEventId());
+                    } catch (Exception e) {
+                        log.error("Error during relay of event {}: {}", event.getEventId(), e.getMessage());
+                        event.setStatus(OutboxStatus.FAILED);
+                        event.setRetryCount(event.getRetryCount() + 1);
+                        event.setLastErrorMessage(e.getMessage());
+                        event.setNextRetryAt(Instant.now().plusSeconds(30L * event.getRetryCount()));
+                        event.setLeaseOwner(null);
+                        event.setLeaseExpiresAt(null);
+                        getOutboxTable().updateItem(event);
+
+                        meterRegistry.counter("outbox.events.processed", "status", "FAILED").increment();
+                    }
+                });
     }
 
     private boolean claimEvent(OutboxEvent event) {

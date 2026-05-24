@@ -48,14 +48,8 @@ public class ReservationMetricsTest extends BaseIntegrationTest {
                 .then()
                 .statusCode(200);
 
-        // 3. Verify metrics
-        assertThat(meterRegistry.find("reservation.created")
-                .tag("status", "success")
-                .counter())
-                .isNotNull();
-
-        assertThat(meterRegistry.find("reservation.creation.duration")
-                .tag("status", "completed")
+        // 3. Verify metrics - Observation creates a timer named "reservation.create"
+        assertThat(meterRegistry.find("reservation.create")
                 .timer())
                 .isNotNull();
     }
@@ -71,10 +65,10 @@ public class ReservationMetricsTest extends BaseIntegrationTest {
                 .then()
                 .statusCode(404);
 
-        // Verify failure metrics exist
-        assertThat(meterRegistry.find("reservation.created")
-                .tag("status", "failed")
-                .counters())
+        // Verify failure metrics exist - Observation adds "error" tag on failure
+        assertThat(meterRegistry.find("reservation.create")
+                .tagKeys("error")
+                .timers())
                 .isNotEmpty();
     }
 
