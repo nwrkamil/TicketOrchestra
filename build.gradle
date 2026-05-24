@@ -19,37 +19,40 @@ repositories {
 }
 
 dependencies {
+    implementation platform('org.springframework.modulith:spring-modulith-bom:2.0.6')
+    implementation platform('io.awspring.cloud:spring-cloud-aws-dependencies:4.0.0')
+
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-opentelemetry'
     implementation 'io.micrometer:micrometer-registry-prometheus'
-    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.5'
-    implementation platform('org.springframework.modulith:spring-modulith-bom:2.0.6')
-    implementation 'org.springframework.modulith:spring-modulith-starter-core'
-    implementation platform('io.awspring.cloud:spring-cloud-aws-dependencies:3.3.0')
+    implementation 'io.micrometer:micrometer-registry-otlp'
     implementation 'io.micrometer:micrometer-tracing-bridge-otel'
-    implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
-    implementation 'io.opentelemetry:opentelemetry-sdk'
-    implementation 'io.opentelemetry:opentelemetry-sdk-extension-autoconfigure'
-    implementation 'io.opentelemetry.semconv:opentelemetry-semconv:1.25.0-alpha'
-    implementation 'io.awspring.cloud:spring-cloud-aws-starter-sqs'
-    implementation platform('software.amazon.awssdk:bom:2.30.0')
-    implementation 'software.amazon.awssdk:dynamodb'
-    implementation 'software.amazon.awssdk:dynamodb-enhanced'
-    implementation 'software.amazon.awssdk:sqs'
-    implementation 'software.amazon.awssdk:auth'
-    compileOnly 'com.github.spotbugs:spotbugs-annotations:4.8.6'
 
+    implementation 'org.springframework.modulith:spring-modulith-starter-core'
+    runtimeOnly 'org.springframework.modulith:spring-modulith-actuator'
+    runtimeOnly 'org.springframework.modulith:spring-modulith-observability'
+
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
+
+    implementation 'io.awspring.cloud:spring-cloud-aws-starter-dynamodb'
+    implementation 'io.awspring.cloud:spring-cloud-aws-starter-sqs'
+
+    compileOnly 'com.github.spotbugs:spotbugs-annotations:4.8.6'
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
-    testCompileOnly 'org.projectlombok:lombok'
-    testAnnotationProcessor 'org.projectlombok:lombok'
-    testImplementation 'io.rest-assured:rest-assured:5.5.0'
+
+    testImplementation 'org.springframework.boot:spring-boot-micrometer-tracing-test'
+    testImplementation 'org.springframework.boot:spring-boot-starter-opentelemetry-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.modulith:spring-modulith-starter-test'
-    testImplementation 'org.testcontainers:junit-jupiter'
-    testImplementation 'org.testcontainers:localstack'
-    testImplementation platform('org.testcontainers:testcontainers-bom:1.20.6')
+    testImplementation 'io.rest-assured:rest-assured:5.5.0'
+    testImplementation 'org.testcontainers:testcontainers-junit-jupiter:2.0.5'
+    testImplementation 'org.testcontainers:testcontainers-localstack:2.0.5'
+    testCompileOnly 'org.projectlombok:lombok'
+    testAnnotationProcessor 'org.projectlombok:lombok'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 test {
